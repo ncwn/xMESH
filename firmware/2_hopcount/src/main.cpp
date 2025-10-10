@@ -22,13 +22,23 @@
 
 #include <Arduino.h>
 #include "LoraMesher.h"
+#include "entities/routingTable/RouteNode.h"
+#include "services/RoutingTableService.h"
 #include "display.h"
 #include "../../common/heltec_v3_config.h"
+
+// Heltec V3 Custom SPI pins (required for proper operation)
+#define LORA_MOSI   10
+#define LORA_MISO   11
+#define LORA_SCK    9
 
 // LED Control
 #define BOARD_LED   LED_PIN
 #define LED_ON      HIGH
 #define LED_OFF     LOW
+
+// Custom SPI instance for Heltec V3
+SPIClass customSPI(HSPI);
 
 // Get LoRaMesher singleton instance
 LoraMesher& radio = LoraMesher::getInstance();
@@ -197,6 +207,9 @@ void createReceiveMessages() {
 void setupLoraMesher() {
     Serial.println("Initializing LoRaMesher with hop-count routing...");
 
+    // Initialize custom SPI with Heltec V3 pins (CRITICAL for Heltec V3!)
+    customSPI.begin(LORA_SCK, LORA_MISO, LORA_MOSI, LORA_CS);
+
     // Get default configuration
     LoraMesher::LoraMesherConfig config = LoraMesher::LoraMesherConfig();
 
@@ -209,6 +222,26 @@ void setupLoraMesher() {
     // Set LoRa module type (SX1262)
     config.module = LoraMesher::LoraModules::SX1262_MOD;
 
+    // Use custom SPI instance (CRITICAL for Heltec V3!)
+    config.spi = &customSPI;
+
+    // Set LoRa parameters to match working Heltec V3 example
+    config.freq = 915.0;          // 915 MHz (AS923 compatible)
+    config.bw = 125.0;            // 125 kHz bandwidth
+    config.sf = 7;                // Spreading factor 7
+    config.cr = 7;                // Coding rate 4/7
+    config.syncWord = 0x12;       // Private sync word
+    config.preambleLength = 8;
+
+    // Set TX power - reduce for sensor/gateway to force multi-hop routing
+    // Router uses full power (14 dBm) to ensure it can reach both ends
+#ifdef XMESH_ROLE_ROUTER
+    config.power = 14;  // Router: Full power to bridge sensor and gateway
+#else
+    config.power = -3;  // Sensor/Gateway: Minimum power (-3 dBm) to force routing via router
+#endif
+    Serial.printf("TX Power: %d dBm\n", config.power);
+
     // Initialize LoRaMesher
     radio.begin(config);
 
@@ -218,6 +251,12 @@ void setupLoraMesher() {
 
     // Start radio (this enables automatic routing)
     radio.start();
+
+    // If this is a gateway, set the gateway role so other nodes can find it
+    if (IS_GATEWAY) {
+        radio.addGatewayRole();
+        Serial.println("Gateway role added - other nodes can discover this gateway");
+    }
 
     Serial.println("LoRaMesher initialized with hop-count routing");
     Serial.printf("Local address: %04X\n", radio.getLocalAddress());
@@ -247,14 +286,22 @@ void sendSensorData(void*) {
         data.sensorValue = random(0, 100) + (random(0, 100) / 100.0); // Simulated sensor
         data.hopCount = 0;
 
-        // Send packet - LoRaMesher will route it automatically
-        Serial.printf("TX: Seq=%lu Value=%.2f\n", data.seqNum, data.sensorValue);
+        // Find closest gateway in routing table
+        RouteNode* gateway = radio.getClosestGateway();
         
-        // If this is a sensor, try to find gateway in routing table
-        // Otherwise broadcast (LoRaMesher will handle routing)
-        radio.createPacketAndSend(BROADCAST_ADDR, &data, 1);
+        if (gateway != nullptr) {
+            // Send to gateway address - LoRaMesher will route via routing table
+            uint16_t gatewayAddr = gateway->networkNode.address;
+            Serial.printf("TX: Seq=%lu Value=%.2f to Gateway=%04X (Hops=%u)\n", 
+                         data.seqNum, data.sensorValue, gatewayAddr, gateway->networkNode.metric);
+            
+            radio.createPacketAndSend(gatewayAddr, &data, 1);
+            txCount++;
+        } else {
+            // No gateway found yet, wait for routing table to build
+            Serial.println("TX: No gateway in routing table yet, waiting...");
+        }
         
-        txCount++;
         updateDisplayLine2();
     }
 }
@@ -328,6 +375,34 @@ void setup() {
 }
 
 void loop() {
-    // Main loop only handles display updates
+    // Main loop only handles display updates and routing table debugging
     Screen.drawDisplay();
+    
+    // Print routing table every 30 seconds for debugging
+    static uint32_t lastRoutingTablePrint = 0;
+    if (millis() - lastRoutingTablePrint > 30000) {
+        lastRoutingTablePrint = millis();
+        Serial.println("\n==== Routing Table ====");
+        Serial.printf("Routing table size: %d\n", radio.routingTableSize());
+        
+        // Manually iterate and print routing table entries
+        LM_LinkedList<RouteNode>* routingTable = RoutingTableService::routingTableList;
+        if (routingTable && routingTable->moveToStart()) {
+            Serial.println("Addr   Via    Hops  Role");
+            Serial.println("------|------|------|----");
+            do {
+                RouteNode* node = routingTable->getCurrent();
+                Serial.printf("%04X | %04X | %4d | %02X\n",
+                             node->networkNode.address,
+                             node->via,
+                             node->networkNode.metric,
+                             node->networkNode.role);
+            } while (routingTable->next());
+        } else {
+            Serial.println("(empty)");
+        }
+        Serial.println("=======================\n");
+    }
+    
+    delay(100);
 }

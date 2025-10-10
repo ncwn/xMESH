@@ -18,7 +18,8 @@ This firmware implements **hop-count routing** using LoRaMesher's built-in routi
 
 ### Sensor Node (`XMESH_ROLE_SENSOR`)
 - Generates data packets every 60 seconds
-- Broadcasts packets (LoRaMesher routes to gateway)
+- Queries routing table to find gateway address
+- Sends packets to specific gateway (not broadcast)
 - Participates in routing (maintains routing table)
 - Tracks TX/RX packet counts
 
@@ -29,6 +30,7 @@ This firmware implements **hop-count routing** using LoRaMesher's built-in routi
 - Tracks TX/RX packet counts
 
 ### Gateway Node (`XMESH_ROLE_GATEWAY`)
+- Advertises ROLE_GATEWAY via HELLO packets
 - Receives and logs packets
 - **Does NOT forward** (sink node)
 - Displays packet statistics
