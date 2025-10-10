@@ -17,12 +17,32 @@ and this project adheres to an 8-week implementation timeline.
 - `AI_HANDOFF.md` for multi-AI context management
 - `firmware/common/heltec_v3_config.h` with complete pin definitions and LoRa configuration for Heltec WiFi LoRa32 V3 board
 - `CHANGELOG.md` to track weekly progress
+- **Flooding baseline firmware** (`firmware/1_flooding/`):
+  - `platformio.ini` with 3 build environments (sensor, router, gateway)
+  - `src/main.cpp` with flooding protocol implementation
+  - `src/display.h` and `src/display.cpp` for OLED status display
+  - `README.md` with build instructions and protocol documentation
+  - Duplicate detection using 5-entry circular cache
+  - Role-based behavior (sensors generate packets, routers forward, gateways receive)
 
 ### Configuration
 - **Hardware:** 5x Heltec WiFi LoRa32 V3 (ESP32-S3 + SX1262)
 - **LoRa Settings:** 923.2 MHz (AS923 Thailand), SF7, BW125, 14 dBm, 1% duty cycle
 - **Topologies:** A (3-node), B (4-node), C (5-node dual gateway), D (3-node + interference)
 - **Build System:** PlatformIO with 3 build configurations per protocol (sensor, router, gateway)
+- **Packet Interval:** 60 seconds (sensors)
+- **Display Format:** Line1=ID+Role, Line2=TX/RX counts, Line3=Protocol, Line4=Duty cycle
+
+### Technical Details
+- Flooding protocol broadcasts all packets to all neighbors
+- Duplicate detection prevents infinite loops using (srcAddr, seqNum) cache
+- SensorData packet structure includes: seqNum, srcAddr, timestamp, sensorValue, hopCount
+- All 3 build environments compile successfully (tested on macOS with PlatformIO)
+
+### Known Issues
+- Compiler warnings about `NODE_ROLE_STR` and `ROLE_GATEWAY` redefinition (harmless, can be ignored)
+- Cause: LoRaMesher library's internal role definitions conflict with compile flags
+- Impact: None - warnings only, functionality not affected
 
 ### Notes
 - Proposal documents excluded from git repository (reference only)
