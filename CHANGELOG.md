@@ -66,6 +66,53 @@ and this project adheres to an 8-week implementation timeline.
 - **Flooding baseline is now HARDWARE TESTED and OPERATIONAL** 🎉
 - Display integration adapted from LoRaMesher CounterAndDisplay example
 
+## [Week 2-3] - 2025-10-10
+
+### Added
+- **Hop-count routing baseline firmware** (`firmware/2_hopcount/`):
+  - `platformio.ini` with 3 build environments (sensor, router, gateway)
+  - `src/main.cpp` using LoRaMesher's built-in hop-count routing
+  - `src/display.h` and `src/display.cpp` (copied from flooding baseline)
+  - `README.md` with routing protocol documentation and comparison with flooding
+  - Automatic routing table maintenance via HELLO packets
+  - Shortest path selection based on hop count
+
+### Technical Details
+- Hop-count routing uses LoRaMesher's internal routing protocol (no manual forwarding)
+- Routing tables built automatically through periodic HELLO packet exchanges
+- Packets forwarded to specific next hop (not broadcast like flooding)
+- Lower network overhead compared to flooding (intelligent routing vs broadcast storm)
+- Display shows "HOP-CNT" protocol indicator
+
+### Tested
+- **Hardware Testing Results:** ✅ All 3 node types verified working on physical Heltec boards
+  - **Sensor Node (ID: BB94):** TX=4, RX=0 - Generating packets every 60s
+  - **Router Node (ID: 6674):** TX=0, RX=4 - Receiving packets but not forwarding (direct path available)
+  - **Gateway Node (ID: D218):** TX=0, RX=4 - Receiving packets directly from sensor
+- **Routing Behavior:** LoRaMesher correctly selected shortest path (direct sensor→gateway, 0 hops)
+- **Display Status:** All nodes showing correct role indicators [S], [R], [G] with "HOP-CNT" protocol
+- **Network Communication:** End-to-end delivery verified, routing table functioning correctly
+
+### Observations
+- Indoor LoRa range excellent (~10-20m through walls easily)
+- Router not utilized in current setup due to direct sensor-gateway link being optimal
+- LoRaMesher's hop-count routing working as designed (chooses shortest path)
+- For controlled topology testing (Week 6), will need physical separation or reduced TX power
+
+### Comparison: Flooding vs Hop-Count
+| Metric | Flooding (Week 1) | Hop-Count (Week 2-3) |
+|--------|-------------------|----------------------|
+| Router TX (same topology) | 2 packets | 0 packets |
+| Network Overhead | High (broadcast) | Low (targeted) |
+| Routing | Stateless | Stateful (routing table) |
+| Path Selection | None (flood all) | Shortest path (hop count) |
+
+### Notes
+- Hop-count baseline is **HARDWARE TESTED and OPERATIONAL** ✅
+- Protocol successfully demonstrates intelligent routing vs flooding
+- Formal topology experiments planned for Week 6
+- Using LoRaMesher library v0.0.10 routing features
+
 ## [Upcoming - Week 2]
 
 ### Planned
