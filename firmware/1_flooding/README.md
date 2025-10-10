@@ -25,11 +25,15 @@ This firmware implements a simple **flooding protocol** as the baseline for xMES
 - Implements duplicate detection
 - Tracks TX/RX packet counts
 
+**Note:** Build flag is `XMESH_ROLE_ROUTER` (not `ROLE_ROUTER`) to avoid conflicts with LoRaMesher library.
+
 ### Gateway Node (`ROLE_GATEWAY`)
 - Receives and logs packets
 - **Does NOT rebroadcast** (sink node)
 - Displays packet statistics
 - Can be connected to Raspberry Pi for data collection
+
+**Note:** Build flag is `XMESH_ROLE_GATEWAY` (not `ROLE_GATEWAY`) to avoid conflicts with LoRaMesher library.
 
 ## Duplicate Detection
 
@@ -85,13 +89,26 @@ pio run -e gateway
 
 ```bash
 # Upload to sensor (specify port if needed)
-pio run -e sensor -t upload
+pio run -e sensor -t upload --upload-port /dev/tty.usbserial-0001
 
 # Upload to router
-pio run -e router -t upload
+pio run -e router -t upload --upload-port /dev/tty.usbserial-0001
 
 # Upload to gateway
-pio run -e gateway -t upload
+pio run -e gateway -t upload --upload-port /dev/tty.usbserial-0001
+```
+
+**On macOS:** Port is typically `/dev/tty.usbserial-0001` or `/dev/tty.SLAB_USBtoUART`  
+**On Linux:** Port is typically `/dev/ttyUSB0` or `/dev/ttyACM0`  
+**On Windows:** Port is typically `COM3` or `COM4`
+
+**To find your port:**
+```bash
+# macOS/Linux
+ls /dev/tty.* | grep -i usb
+
+# Or use PlatformIO
+pio device list
 ```
 
 ### Monitor Serial Output
@@ -128,6 +145,52 @@ struct SensorData {
 ```
 
 ## Testing
+
+### Step-by-Step: Flashing 3 Boards for Topology A
+
+**What you need:**
+- 3 Heltec WiFi LoRa32 V3 boards
+- USB cable
+- Computer with PlatformIO installed
+
+**Instructions:**
+
+1. **Flash Board 1 as SENSOR:**
+   ```bash
+   cd firmware/1_flooding
+   
+   # Connect Board 1 via USB
+   # Find port: ls /dev/tty.* | grep -i usb
+   
+   pio run -e sensor -t upload --upload-port /dev/tty.usbserial-0001
+   ```
+   
+   **Verify:** Display should show `ID:XXXX [S]` and TX counter incrementing
+
+2. **Flash Board 2 as ROUTER:**
+   ```bash
+   # Disconnect Board 1, connect Board 2
+   
+   pio run -e router -t upload --upload-port /dev/tty.usbserial-0001
+   ```
+   
+   **Verify:** Display should show `ID:YYYY [R]`
+
+3. **Flash Board 3 as GATEWAY:**
+   ```bash
+   # Disconnect Board 2, connect Board 3
+   
+   pio run -e gateway -t upload --upload-port /dev/tty.usbserial-0001
+   ```
+   
+   **Verify:** Display should show `ID:ZZZZ [G]`
+
+4. **Power all 3 boards** (via USB or battery)
+
+5. **Monitor gateway serial output:**
+   ```bash
+   pio device monitor -b 115200 -p /dev/tty.usbserial-0001
+   ```
 
 ### Topology A (3-node linear): S1 → R1 → G1
 
@@ -192,8 +255,41 @@ GATEWAY: Packet 0 from A3F2 received (hops=2, value=42.35)
 
 ## Known Issues & Warnings
 
-- **Compiler Warning:** `NODE_ROLE_STR redefined` - This is harmless. The LoRaMesher library defines ROLE_GATEWAY internally, which conflicts with our compile flag. Functionality is not affected.
-- **ROLE_GATEWAY redefined:** Similar warning from LoRaMesher's BuildOptions.h. Can be safely ignored.
+### ✅ RESOLVED: Display Not Working
+**Problem:** OLED display remains blank on Heltec V3 board  
+**Cause:** Heltec V3 requires GPIO 36 (Vext) to be set LOW to power the OLED  
+**Solution:** Added Vext power control in display.cpp:
+```cpp
+pinMode(36, OUTPUT);
+digitalWrite(36, LOW);  // LOW = OLED power ON
+delay(100);
+```
+**Status:** ✅ FIXED - Display now works correctly
+
+### ✅ RESOLVED: Role Naming Conflict
+**Problem:** Router nodes were acting as gateways (not rebroadcasting)  
+**Cause:** LoRaMesher library's `BuildOptions.h` defines `ROLE_GATEWAY` as a numeric constant (0b00000001), conflicting with our compile-time flags  
+**Solution:** Renamed all role flags to use `XMESH_ROLE_*` prefix:
+- `ROLE_SENSOR` → `XMESH_ROLE_SENSOR`
+- `ROLE_ROUTER` → `XMESH_ROLE_ROUTER`
+- `ROLE_GATEWAY` → `XMESH_ROLE_GATEWAY`
+
+**Files Modified:**
+- `platformio.ini` - Updated build flags
+- `firmware/common/heltec_v3_config.h` - Updated role definitions and logic
+
+**Status:** ✅ FIXED - All roles now work correctly, no compiler warnings
+
+### Hardware Testing Status
+**Date:** 2025-10-10  
+**Status:** ✅ ALL 3 NODE TYPES TESTED AND WORKING
+
+**Test Results:**
+- **Sensor (ID: 6674):** TX=4, RX=2 ✅
+- **Router (ID: D218):** TX=2, RX=2 ✅ (1:1 forwarding ratio)
+- **Gateway:** TX=0, RX=2 ✅ (sink behavior confirmed)
+- **Duplicate Detection:** Working correctly ✅
+- **Display:** All nodes showing correct roles [S], [R], [G] ✅
 
 ## File Structure
 
@@ -231,18 +327,40 @@ Results will be compared against hop-count and gateway-aware protocols.
 ## Troubleshooting
 
 ### Display not working
+**✅ RESOLVED:** Heltec V3 requires Vext pin (GPIO 36) set LOW to power OLED. This is now automatically handled in `display.cpp` initialization.
+
+If display still doesn't work:
 - Check I2C address is 0x3C
 - Verify OLED_SDA=17, OLED_SCL=18, OLED_RST=21
+- Ensure Vext (GPIO 36) is set to OUTPUT and LOW
+- Check I2C is initialized: `Wire.begin(OLED_SDA, OLED_SCL)`
+
+### Role not working correctly
+**✅ RESOLVED:** Use `XMESH_ROLE_*` build flags (not `ROLE_*`) to avoid conflicts with LoRaMesher library.
+
+Verify your build environment in `platformio.ini`:
+```ini
+[env:sensor]
+build_flags = -D XMESH_ROLE_SENSOR
+
+[env:router]
+build_flags = -D XMESH_ROLE_ROUTER
+
+[env:gateway]
+build_flags = -D XMESH_ROLE_GATEWAY
+```
 
 ### No LoRa packets received
 - Verify all nodes on same frequency (923.2 MHz)
 - Check antenna connections
 - Ensure nodes are within range (~100m line-of-sight)
+- Verify serial output shows "LoRaMesher initialized"
 
 ### Upload failed
 - Press RESET button while uploading
 - Check USB cable and port permissions
 - Try `pio run -e sensor -t upload --upload-port /dev/ttyUSB0`
+- On macOS, ensure USB serial drivers are installed
 
 ## References
 
@@ -255,4 +373,6 @@ Results will be compared against hop-count and gateway-aware protocols.
 
 **Author:** xMESH Research Project  
 **Date:** 2025-10-10  
-**Status:** Week 1 - Baseline Implementation Complete
+**Status:** ✅ Week 1 - Baseline Implementation Complete & Hardware Tested
+
+**Hardware Testing:** All 3 node types verified working on physical Heltec boards (2025-10-10)

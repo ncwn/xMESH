@@ -39,15 +39,31 @@ and this project adheres to an 8-week implementation timeline.
 - SensorData packet structure includes: seqNum, srcAddr, timestamp, sensorValue, hopCount
 - All 3 build environments compile successfully (tested on macOS with PlatformIO)
 
-### Known Issues
-- Compiler warnings about `NODE_ROLE_STR` and `ROLE_GATEWAY` redefinition (harmless, can be ignored)
-- Cause: LoRaMesher library's internal role definitions conflict with compile flags
-- Impact: None - warnings only, functionality not affected
+### Fixed
+- **OLED Display Not Working:** Added Vext pin (GPIO 36) power control - must be set LOW to power OLED on Heltec V3
+- **I2C Initialization:** Added explicit Wire.begin(SDA_PIN, SCL_PIN) before display init
+- **Role Naming Conflict:** Renamed all role flags from `ROLE_*` to `XMESH_ROLE_*` to avoid collision with LoRaMesher's internal `ROLE_GATEWAY` definition
+- **Role Detection Logic:** Fixed `#ifdef` chain in `heltec_v3_config.h` to use `#elif` to prevent multiple role definitions
+
+### Tested
+- **Hardware Testing Results:** ✅ All 3 node types verified working on physical Heltec boards
+  - **Sensor Node (ID: 6674):** TX=4, RX=2 - Correctly generating packets and receiving rebroadcasts
+  - **Router Node (ID: D218):** TX=2, RX=2 - Correctly forwarding all received packets (1:1 ratio)
+  - **Gateway Node:** TX=0, RX=2 - Correctly receiving packets without rebroadcasting
+- **Duplicate Detection:** Working correctly - duplicate messages appear when same packet received multiple times
+- **Display Status:** All nodes showing correct role indicators [S], [R], [G] with accurate TX/RX counters
+- **Network Communication:** End-to-end packet flow verified - sensor → router → gateway topology operational
+
+### Known Issues (Resolved)
+- ~~Compiler warnings about `NODE_ROLE_STR` and `ROLE_GATEWAY` redefinition~~ ✅ FIXED with `XMESH_ROLE_*` prefix
+- ~~OLED display not powering on~~ ✅ FIXED with Vext GPIO 36 control
+- ~~Router not rebroadcasting packets~~ ✅ FIXED with role naming conflict resolution
 
 ### Notes
 - Proposal documents excluded from git repository (reference only)
 - Using LoRaMesher library v0.0.10 as base
 - Single codebase per protocol with compile-time role configuration
+- **Flooding baseline is now HARDWARE TESTED and OPERATIONAL** 🎉
 - Display integration adapted from LoRaMesher CounterAndDisplay example
 
 ## [Upcoming - Week 2]

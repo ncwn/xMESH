@@ -352,6 +352,7 @@ void setup() {
     Serial.println("xMESH Flooding Protocol");
     Serial.printf("Role: %s (%s)\n", NODE_ROLE_STR, 
                   IS_SENSOR ? "SENSOR" : (IS_GATEWAY ? "GATEWAY" : "ROUTER"));
+    Serial.printf("IS_SENSOR=%d IS_ROUTER=%d IS_GATEWAY=%d\n", IS_SENSOR, IS_ROUTER, IS_GATEWAY);
     Serial.println("=================================\n");
 
     // Setup LED

@@ -213,47 +213,36 @@
 // ============================================================================
 
 /**
- * @brief Gateway/Border Node Role Flag
- * Node connected to Raspberry Pi, bridges LoRa mesh to IP network
- * Set via build flag: -D ROLE_GATEWAY
+ * @brief Node role definitions based on compile flags
+ * Only ONE role should be defined via build flags:
+ * -D XMESH_ROLE_GATEWAY, -D XMESH_ROLE_SENSOR, or -D XMESH_ROLE_ROUTER
+ * 
+ * Note: Using XMESH_ prefix to avoid conflicts with LoRaMesher library's
+ * ROLE_GATEWAY definition in BuildOptions.h
  */
-#ifdef ROLE_GATEWAY
+#if defined(XMESH_ROLE_GATEWAY)
     #define NODE_ROLE_STR "G"  // Display as [G]
     #define IS_GATEWAY true
-#else
-    #define IS_GATEWAY false
-#endif
-
-/**
- * @brief Sensor Node Role Flag
- * Node that generates sensor data packets
- * Set via build flag: -D ROLE_SENSOR
- */
-#ifdef ROLE_SENSOR
-    #define NODE_ROLE_STR "S"  // Display as [S]
-    #define IS_SENSOR true
-#else
     #define IS_SENSOR false
-#endif
-
-/**
- * @brief Router Node Role Flag
- * Node that only forwards packets (no data generation)
- * Set via build flag: -D ROLE_ROUTER
- */
-#ifdef ROLE_ROUTER
+    #define IS_ROUTER false
+#elif defined(XMESH_ROLE_SENSOR)
+    #define NODE_ROLE_STR "S"  // Display as [S]
+    #define IS_GATEWAY false
+    #define IS_SENSOR true
+    #define IS_ROUTER false
+#elif defined(XMESH_ROLE_ROUTER)
     #define NODE_ROLE_STR "R"  // Display as [R]
+    #define IS_GATEWAY false
+    #define IS_SENSOR false
     #define IS_ROUTER true
 #else
-    #define IS_ROUTER false
-#endif
-
-// If no role defined, default to sensor
-#if !defined(ROLE_GATEWAY) && !defined(ROLE_SENSOR) && !defined(ROLE_ROUTER)
-    #define ROLE_SENSOR
+    // Default to sensor if no role defined
+    #define XMESH_ROLE_SENSOR
     #define NODE_ROLE_STR "S"
+    #define IS_GATEWAY false
     #define IS_SENSOR true
-    #warning "No role defined, defaulting to ROLE_SENSOR"
+    #define IS_ROUTER false
+    #warning "No role defined, defaulting to XMESH_ROLE_SENSOR"
 #endif
 
 // ============================================================================

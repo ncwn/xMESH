@@ -66,15 +66,36 @@ void Display::changeLine(String text, int pos, int& x, int& minX, int size, bool
 }
 
 void Display::initDisplay() {
+    // Heltec V3: Enable Vext power for OLED (GPIO 36)
+    // LOW = OLED power ON
+    pinMode(36, OUTPUT);
+    digitalWrite(36, LOW);
+    delay(100); // Wait for power to stabilize
+    
+    // Initialize I2C with Heltec V3 pins (SDA=17, SCL=18)
+    Wire.begin(17, 18);
+    
+    // Reset OLED display via hardware reset pin (pin 21)
+    pinMode(21, OUTPUT);
+    digitalWrite(21, LOW);
+    delay(20);
+    digitalWrite(21, HIGH);
+    delay(20);
+    
     // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
     if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println(F("SSD1306 allocation failed"));
-        for (;;); // Don't proceed, loop forever
+        // Try alternate I2C address
+        if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+            Serial.println(F("SSD1306 allocation failed on both addresses"));
+            for (;;); // Don't proceed, loop forever
+        }
     }
 
     display.clearDisplay();
     display.setTextColor(WHITE); // Draw white text
     display.setTextWrap(false);
+    display.display(); // Show the initial clear display
 
     Serial.println(F("SSD1306 display initialized"));
     delay(50);
