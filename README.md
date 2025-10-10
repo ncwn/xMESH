@@ -1,4 +1,141 @@
-# LoRaMesher
+# xMESH: LoRa Mesh Network with Gateway-Aware Cost Routing
+
+**Research Project:** Master's Internship - Asian Institute of Technology
+**Duration:** 8 weeks (October - December 2025)
+**Hardware:** 5x Heltec WiFi LoRa32 V3, 2x Raspberry Pi
+**Base Library:** LoRaMesher v0.0.10
+
+---
+
+## Project Overview
+
+This repository contains the implementation of a research project focused on designing and evaluating a **gateway-aware cost routing protocol** for LoRa mesh networks. The project addresses the scalability limitations of broadcast-based routing by implementing intelligent, metric-based path selection.
+
+### Research Goals
+
+1. **Compare three routing approaches:**
+   - **Baseline 1:** Flooding (broadcast-based)
+   - **Baseline 2:** Hop-count routing (LoRaMesher default)
+   - **Proposed:** Gateway-aware cost routing (RSSI/SNR/ETX/gateway-bias)
+
+2. **Evaluate performance metrics:**
+   - Packet Delivery Ratio (PDR)
+   - End-to-end latency
+   - Network overhead
+   - Route stability
+   - Duty cycle compliance (AS923 Thailand: 1% max)
+
+3. **Demonstrate scalability:** Test across 4 network topologies (3-5 nodes)
+
+### Hardware Configuration
+
+- **Nodes:** Heltec WiFi LoRa32 V3
+  - MCU: ESP32-S3 (Dual-Core Xtensa LX7)
+  - LoRa: SX1262 transceiver
+  - Display: 0.96" OLED (128x64, SSD1306)
+
+- **Gateway:** 2x Raspberry Pi 3B+/4
+  - MQTT broker (Mosquitto)
+  - SQLite database
+  - Data collection scripts (Python)
+
+### Network Topologies
+
+1. **Topology A (3-node linear):** S1 → R1 → G1
+2. **Topology B (4-node diamond):** S1 → R1/R2 → G1 (parallel paths)
+3. **Topology C (5-node dual gateway):** S1,S2 → R3 → G4,G5 (redundant gateways)
+4. **Topology D (3-node + interference):** S1 → R1 → G1 + RF jammer
+
+### Project Structure
+
+```
+xMESH/
+├── firmware/
+│   ├── 1_flooding/         # Baseline 1: Simple broadcast
+│   ├── 2_hopcount/         # Baseline 2: LoRaMesher default
+│   ├── 3_gateway_routing/  # Proposed: Gateway-aware cost
+│   └── common/             # Shared config (Heltec V3 pins, LoRa settings)
+├── raspberry_pi/           # Gateway collector scripts
+├── analysis/               # Data analysis & visualization
+├── experiments/            # Test configurations & results
+└── docs/                   # Documentation & diagrams
+```
+
+### Key Features
+
+- **Single codebase per protocol** with compile-time role configuration (sensor/router/gateway)
+- **AS923 Thailand compliance:** 923.2 MHz, SF7, 14 dBm, 1% duty cycle
+- **Dual gateway support:** Topology C tests gateway redundancy and failover
+- **Display integration:** Real-time routing metrics on OLED
+- **Statistical validation:** Paired t-tests, Cohen's d effect size, p-values
+
+### Quick Start
+
+**Prerequisites:**
+- PlatformIO IDE (VS Code extension)
+- 5x Heltec WiFi LoRa32 V3 boards
+- 1-2 Raspberry Pi (for gateway)
+
+**Build & Flash:**
+```bash
+cd firmware/1_flooding  # or 2_hopcount, 3_gateway_routing
+
+# Build for sensor node
+pio run -e sensor
+
+# Build for router node
+pio run -e router
+
+# Build for gateway node
+pio run -e gateway
+
+# Flash to board
+pio run -e sensor -t upload --upload-port /dev/cu.usbserial-XXX
+```
+
+**Gateway Setup:**
+```bash
+cd raspberry_pi
+pip install -r requirements.txt
+python gateway_collector.py --port /dev/ttyUSB0 --db testbed_data.db
+```
+
+### Documentation
+
+- **[AI_HANDOFF.md](AI_HANDOFF.md):** Multi-AI context tracking (for development)
+- **[CHANGELOG.md](CHANGELOG.md):** Weekly progress log
+- **[firmware/common/heltec_v3_config.h](firmware/common/heltec_v3_config.h):** Pin definitions & LoRa config
+- **Proposal Document:** Available in `proposal_docs/` (excluded from git)
+
+### Citation
+
+This project builds upon the LoRaMesher library. If you use this work in academic research, please cite:
+
+**xMESH Research Project:**
+```
+[Citation to be added upon publication]
+```
+
+**LoRaMesher Base Library:**
+```
+@ARTICLE{9930341,
+  author={Solé, Joan Miquel and Centelles, Roger Pueyo and Freitag, Felix and Meseguer, Roc},
+  journal={IEEE Access},
+  title={Implementation of a LoRa Mesh Library},
+  year={2022},
+  volume={10},
+  pages={113158-113171},
+  doi={10.1109/ACCESS.2022.3217215}
+}
+```
+
+### License
+
+MIT License (inherited from LoRaMesher)
+
+---
+
+# LoRaMesher Library Documentation
 
 ## See the [GitHub Pages](https://jaimi5.github.io/LoRaMesher) for more information
 

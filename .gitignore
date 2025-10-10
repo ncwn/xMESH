@@ -1,0 +1,59 @@
+# Proposal documents (keep local only for reference)
+proposal_docs/
+
+# AI context tracking (local state, not for repo)
+AI_HANDOFF.md
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+._*
+.Spotlight-V100
+.Trashes
+
+# Build artifacts
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+*.bin
+*.elf
+*.hex
+*.map
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+.cursor/
+.copilot/
+*.sublime-*
+
+# Logs and databases
+*.log
+experiments/results/*.db
+experiments/results/*.db-journal
+experiments/results/*.db-wal
+
+# Temporary files
+*.tmp
+*.bak
+*~
+.cache/
+
+# Large data files (keep raw results local, commit only processed data)
+experiments/results/*.raw
+experiments/results/*.pcap
