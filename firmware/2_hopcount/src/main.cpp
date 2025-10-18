@@ -120,6 +120,142 @@ void updateDisplayLine4() {
 }
 
 // ============================================================================
+// Monitoring Infrastructure for Scalability Analysis
+// ============================================================================
+
+/**
+ * @brief Channel occupancy monitor - Tracks duty-cycle usage
+ * 
+ * European regulations: 1% duty-cycle limit (36 seconds per hour)
+ * Used to calculate scalability breakpoints
+ */
+struct ChannelMonitor {
+    uint32_t totalAirtimeMs = 0;       // Cumulative airtime in current window
+    uint32_t windowStartMs = 0;        // Start of current 1-hour window
+    uint32_t transmissionCount = 0;    // Number of transmissions in window
+    uint32_t violationCount = 0;       // Number of times >1% exceeded
+
+    /**
+     * @brief Record a transmission and update duty-cycle
+     * @param durationMs Time-on-air in milliseconds (56ms @ SF7)
+     */
+    void recordTransmission(uint32_t durationMs) {
+        uint32_t now = millis();
+        
+        // Reset window every hour (3600000 ms)
+        if (now - windowStartMs >= 3600000) {
+            windowStartMs = now;
+            totalAirtimeMs = 0;
+            transmissionCount = 0;
+        }
+        
+        totalAirtimeMs += durationMs;
+        transmissionCount++;
+        
+        // Check for violation (>1% duty-cycle = >36000ms per hour)
+        if (totalAirtimeMs > 36000) {
+            violationCount++;
+        }
+    }
+
+    /**
+     * @brief Get current duty-cycle percentage
+     */
+    float getDutyCyclePercent() {
+        uint32_t elapsed = millis() - windowStartMs;
+        if (elapsed == 0) return 0.0;
+        return (float)totalAirtimeMs / (float)elapsed * 100.0;
+    }
+
+    /**
+     * @brief Print monitoring statistics
+     */
+    void printStats() {
+        Serial.printf("Channel: %.3f%% duty-cycle, %lu TX, %lu violations\n",
+                     getDutyCyclePercent(), transmissionCount, violationCount);
+    }
+};
+
+/**
+ * @brief Memory monitor - Tracks heap usage for memory scaling analysis
+ */
+struct MemoryMonitor {
+    uint32_t minFreeHeap = 0xFFFFFFFF;  // Lowest free heap observed
+    uint32_t maxUsedHeap = 0;           // Peak heap usage
+
+    /**
+     * @brief Update memory statistics
+     */
+    void update() {
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t usedHeap = ESP.getHeapSize() - freeHeap;
+        
+        if (freeHeap < minFreeHeap) minFreeHeap = freeHeap;
+        if (usedHeap > maxUsedHeap) maxUsedHeap = usedHeap;
+    }
+
+    /**
+     * @brief Print memory statistics
+     */
+    void printStats() {
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t heapSize = ESP.getHeapSize();
+        Serial.printf("Memory: %lu/%lu KB free, Min: %lu KB, Peak: %lu KB\n",
+                     freeHeap / 1024, heapSize / 1024,
+                     minFreeHeap / 1024, maxUsedHeap / 1024);
+    }
+};
+
+/**
+ * @brief Queue monitor - Tracks packet queue statistics
+ */
+struct QueueMonitor {
+    uint32_t packetsEnqueued = 0;    // Total packets attempted
+    uint32_t packetsDropped = 0;     // Packets rejected (queue full)
+    uint32_t maxQueueDepth = 0;      // Peak queue size observed
+
+    /**
+     * @brief Record enqueue attempt
+     * @param success True if packet was enqueued successfully
+     */
+    void recordEnqueue(bool success) {
+        packetsEnqueued++;
+        if (!success) packetsDropped++;
+    }
+
+    /**
+     * @brief Update maximum queue depth
+     * @param depth Current queue size
+     */
+    void updateDepth(uint32_t depth) {
+        if (depth > maxQueueDepth) maxQueueDepth = depth;
+    }
+
+    /**
+     * @brief Get packet drop rate percentage
+     */
+    float getDropRate() {
+        if (packetsEnqueued == 0) return 0.0;
+        return (float)packetsDropped / (float)packetsEnqueued * 100.0;
+    }
+
+    /**
+     * @brief Print queue statistics
+     */
+    void printStats() {
+        Serial.printf("Queue: %lu enqueued, %lu dropped (%.2f%%), max depth: %lu\n",
+                     packetsEnqueued, packetsDropped, getDropRate(), maxQueueDepth);
+    }
+};
+
+// Global monitoring instances
+ChannelMonitor channelMonitor;
+MemoryMonitor memoryMonitor;
+QueueMonitor queueMonitor;
+uint32_t lastMonitoringPrint = 0;
+#define MONITORING_INTERVAL_MS 30000  // Print every 30 seconds
+
+// ============================================================================
 // Packet Processing Functions
 // ============================================================================
 
@@ -290,6 +426,11 @@ void sendSensorData(void*) {
         RouteNode* gateway = radio.getClosestGateway();
         
         if (gateway != nullptr) {
+            // Record transmission for monitoring (56ms ToA @ SF7, BW125, CR4/5)
+            uint32_t toaMs = 56;
+            channelMonitor.recordTransmission(toaMs);
+            queueMonitor.recordEnqueue(true);
+            
             // Send to gateway address - LoRaMesher will route via routing table
             uint16_t gatewayAddr = gateway->networkNode.address;
             Serial.printf("TX: Seq=%lu Value=%.2f to Gateway=%04X (Hops=%u)\n", 
@@ -297,6 +438,7 @@ void sendSensorData(void*) {
             
             radio.createPacketAndSend(gatewayAddr, &data, 1);
             txCount++;
+            memoryMonitor.update();
         } else {
             // No gateway found yet, wait for routing table to build
             Serial.println("TX: No gateway in routing table yet, waiting...");
@@ -375,10 +517,10 @@ void setup() {
 }
 
 void loop() {
-    // Main loop only handles display updates and routing table debugging
+    // Main loop handles display updates, routing table debugging, and monitoring
     Screen.drawDisplay();
     
-    // Print routing table every 30 seconds for debugging
+    // Print routing table and monitoring stats every 30 seconds
     static uint32_t lastRoutingTablePrint = 0;
     if (millis() - lastRoutingTablePrint > 30000) {
         lastRoutingTablePrint = millis();
@@ -401,7 +543,30 @@ void loop() {
         } else {
             Serial.println("(empty)");
         }
-        Serial.println("=======================\n");
+        Serial.println("=======================");
+        
+        // Print monitoring statistics
+        Serial.println("\n==== Network Monitoring Stats ====");
+        channelMonitor.printStats();
+        memoryMonitor.printStats();
+        queueMonitor.printStats();
+        Serial.printf("Routing table: %d entries × ~32 bytes = ~%d bytes\n",
+                     radio.routingTableSize(), 
+                     radio.routingTableSize() * 32);
+        Serial.println("====================================\n");
+    }
+    
+    // Print monitoring statistics every 30 seconds (aligned with routing table)
+    if (millis() - lastMonitoringPrint >= MONITORING_INTERVAL_MS) {
+        lastMonitoringPrint = millis();
+        // Stats already printed above with routing table
+    }
+    
+    // Update memory statistics every 5 seconds
+    static uint32_t lastMemUpdate = 0;
+    if (millis() - lastMemUpdate >= 5000) {
+        lastMemUpdate = millis();
+        memoryMonitor.update();
     }
     
     delay(100);
