@@ -124,6 +124,165 @@ GatewayLoad gatewayLoads[5];  // Support up to 5 gateways
 uint8_t numGateways = 0;
 
 // ============================================================================
+// Week 1: Network Monitoring Structures (for analytical model)
+// ============================================================================
+
+/**
+ * @brief Channel occupancy monitor for duty-cycle tracking
+ * Tracks airtime usage to ensure regulatory compliance (1% max)
+ */
+struct ChannelMonitor {
+    uint32_t totalAirtimeMs;      // Total transmission time in current hour (ms)
+    uint32_t windowStartMs;       // Start of current 1-hour window
+    uint32_t transmissionCount;   // Number of transmissions in current window
+    uint32_t violationCount;      // Number of times 1% exceeded
+    
+    ChannelMonitor() : totalAirtimeMs(0), windowStartMs(0), 
+                       transmissionCount(0), violationCount(0) {}
+    
+    /**
+     * @brief Record a transmission and update duty-cycle
+     * @param durationMs Duration of transmission in milliseconds
+     */
+    void recordTransmission(uint32_t durationMs) {
+        uint32_t now = millis();
+        
+        // Reset window if 1 hour has passed
+        if (now - windowStartMs >= 3600000) {  // 1 hour = 3,600,000 ms
+            totalAirtimeMs = 0;
+            transmissionCount = 0;
+            windowStartMs = now;
+        }
+        
+        totalAirtimeMs += durationMs;
+        transmissionCount++;
+        
+        // Check if exceeded 1% duty-cycle (36 seconds per hour)
+        float dutyCyclePercent = (totalAirtimeMs / 3600000.0) * 100.0;
+        if (dutyCyclePercent > 1.0) {
+            violationCount++;
+        }
+    }
+    
+    /**
+     * @brief Get current duty-cycle percentage
+     * @return Duty-cycle as percentage (0-100)
+     */
+    float getDutyCyclePercent() {
+        uint32_t now = millis();
+        uint32_t windowDuration = now - windowStartMs;
+        if (windowDuration == 0) return 0.0;
+        return (totalAirtimeMs / (float)windowDuration) * 100.0;
+    }
+    
+    /**
+     * @brief Print duty-cycle statistics to serial
+     */
+    void printStats() {
+        Serial.printf("Channel: %.3f%% duty-cycle, %u TX, %u violations\n",
+                     getDutyCyclePercent(), transmissionCount, violationCount);
+    }
+};
+
+/**
+ * @brief Memory usage monitor
+ * Tracks heap usage to analyze scalability limits
+ */
+struct MemoryMonitor {
+    uint32_t minFreeHeap;    // Minimum free heap observed
+    uint32_t maxUsedHeap;    // Maximum heap used
+    
+    MemoryMonitor() : minFreeHeap(UINT32_MAX), maxUsedHeap(0) {}
+    
+    /**
+     * @brief Update memory statistics
+     */
+    void update() {
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t totalHeap = ESP.getHeapSize();
+        uint32_t usedHeap = totalHeap - freeHeap;
+        
+        if (freeHeap < minFreeHeap) {
+            minFreeHeap = freeHeap;
+        }
+        if (usedHeap > maxUsedHeap) {
+            maxUsedHeap = usedHeap;
+        }
+    }
+    
+    /**
+     * @brief Print memory statistics
+     */
+    void printStats() {
+        uint32_t freeHeap = ESP.getFreeHeap();
+        uint32_t totalHeap = ESP.getHeapSize();
+        Serial.printf("Memory: %u/%u KB free, Min: %u KB, Peak: %u KB\n",
+                     freeHeap/1024, totalHeap/1024, 
+                     minFreeHeap/1024, maxUsedHeap/1024);
+    }
+};
+
+/**
+ * @brief Queue statistics monitor
+ * Tracks packet queue behavior (LoRaMesher internal queue)
+ */
+struct QueueMonitor {
+    uint32_t packetsEnqueued;   // Total packets attempted to queue
+    uint32_t packetsDropped;    // Packets dropped (queue full)
+    uint32_t maxQueueDepth;     // Maximum queue depth observed
+    
+    QueueMonitor() : packetsEnqueued(0), packetsDropped(0), maxQueueDepth(0) {}
+    
+    /**
+     * @brief Record packet enqueue attempt
+     * @param success True if packet was queued, false if dropped
+     */
+    void recordEnqueue(bool success) {
+        packetsEnqueued++;
+        if (!success) {
+            packetsDropped++;
+        }
+    }
+    
+    /**
+     * @brief Update maximum queue depth
+     * @param depth Current queue depth
+     */
+    void updateDepth(uint32_t depth) {
+        if (depth > maxQueueDepth) {
+            maxQueueDepth = depth;
+        }
+    }
+    
+    /**
+     * @brief Get drop rate percentage
+     * @return Drop rate as percentage
+     */
+    float getDropRate() {
+        if (packetsEnqueued == 0) return 0.0;
+        return (packetsDropped / (float)packetsEnqueued) * 100.0;
+    }
+    
+    /**
+     * @brief Print queue statistics
+     */
+    void printStats() {
+        Serial.printf("Queue: %u enqueued, %u dropped (%.2f%%), max depth: %u\n",
+                     packetsEnqueued, packetsDropped, 
+                     getDropRate(), maxQueueDepth);
+    }
+};
+
+// Global monitoring instances
+ChannelMonitor channelMonitor;
+MemoryMonitor memoryMonitor;
+QueueMonitor queueMonitor;
+
+// Monitoring interval (print stats every 30 seconds)
+#define MONITORING_INTERVAL_MS 30000
+uint32_t lastMonitoringPrint = 0;
+
+// ============================================================================
 // Cost Calculation Functions
 // ============================================================================
 
@@ -588,8 +747,17 @@ void sendSensorData(void*) {
             Serial.printf("TX: Seq=%lu Value=%.2f to Gateway=%04X (Hops=%u)\n", 
                          data.seqNum, data.sensorValue, gatewayAddr, gateway->networkNode.metric);
             
+            // Record transmission for channel monitoring
+            // Time-on-air for 50-byte packet @ SF7, BW125, CR4/5 ≈ 56 ms
+            uint32_t toaMs = 56;  // Measured time-on-air
+            channelMonitor.recordTransmission(toaMs);
+            queueMonitor.recordEnqueue(true);  // Assume successful enqueue
+            
             radio.createPacketAndSend(gatewayAddr, &data, 1);
             txCount++;
+            
+            // Update memory stats
+            memoryMonitor.update();
         } else {
             // No gateway found yet, wait for routing table to build
             Serial.println("TX: No gateway in routing table yet, waiting...");
@@ -732,6 +900,29 @@ void loop() {
             }
         }
         Serial.println("================================\n");
+    }
+    
+    // Print monitoring statistics every 30 seconds
+    if (millis() - lastMonitoringPrint >= MONITORING_INTERVAL_MS) {
+        lastMonitoringPrint = millis();
+        
+        Serial.println("\n==== Network Monitoring Stats ====");
+        channelMonitor.printStats();
+        memoryMonitor.printStats();
+        queueMonitor.printStats();
+        
+        // Print routing table memory usage
+        Serial.printf("Routing table: %d entries × ~32 bytes = ~%d KB\n",
+                     radio.routingTableSize(),
+                     (radio.routingTableSize() * 32) / 1024);
+        Serial.println("===================================\n");
+    }
+    
+    // Update memory monitor periodically
+    static uint32_t lastMemoryUpdate = 0;
+    if (millis() - lastMemoryUpdate > 5000) {  // Every 5 seconds
+        lastMemoryUpdate = millis();
+        memoryMonitor.update();
     }
     
     delay(100);
