@@ -1,0 +1,170 @@
+# 🎯 TESTING CHEAT SHEET - Tape This to Your Wall!
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     xMESH WEEK 1 HARDWARE TESTING                   │
+│                     October 21-24, 2025                             │
+└─────────────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  THE ONLY 3 COMMANDS YOU NEED                                     ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+1️⃣  FLASH FIRMWARE (per protocol, 5 min)
+   cd firmware/[1_flooding | 2_hopcount | 3_gateway_routing]
+   pio run -e sensor --target upload    # BB94
+   pio run -e router --target upload    # 6674  
+   pio run -e gateway --target upload   # D218
+
+2️⃣  FIND PORTS (once per protocol, 2 min)
+   pio device list
+   # Note: /dev/cu.usbserial-XXXXX (sensor)
+   #       /dev/cu.usbserial-YYYYY (router)
+   #       /dev/cu.usbserial-ZZZZZ (gateway)
+
+3️⃣  RUN TEST (per run, 30 min × 3 = 90 min)
+   python3 utilities/multi_node_data_collection.py \
+     --protocol [flooding|hopcount|cost_routing] \
+     --run-number [1|2|3] \
+     --duration 30 \
+     --sensor-port /dev/cu.usbserial-XXXXX \
+     --router-port /dev/cu.usbserial-YYYYY \
+     --gateway-port /dev/cu.usbserial-ZZZZZ \
+     --output-dir experiments/results
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  QUICK PROGRESS TRACKER                                           ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+FLOODING (Day 1 - Oct 21)
+  Run 1: [ ]  Run 2: [ ]  Run 3: [ ]  ✅ Complete: [ ]
+
+HOP-COUNT (Day 2 - Oct 22)  
+  Run 1: [ ]  Run 2: [ ]  Run 3: [ ]  ✅ Complete: [ ]
+
+COST ROUTING (Day 3 - Oct 23)
+  Run 1: [ ]  Run 2: [ ]  Run 3: [ ]  ✅ Complete: [ ]
+
+WEEK 1 DONE: [ ] → Start Week 2 Analysis!
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  NODE SETUP (DON'T CHANGE!)                                       ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+  📱 BB94        📱 6674        📱 D218
+  SENSOR    ←5m→ ROUTER   ←5m→ GATEWAY
+   0xBB94         0x6674         0xD218
+   Sends          Forwards       Receives
+   60s rate       packets        & logs
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  TROUBLESHOOTING 911                                              ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+❌ "Port not found"
+   → ls /dev/cu.*
+
+❌ "Permission denied"  
+   → chmod +x utilities/multi_node_data_collection.py
+   → pip3 install pyserial
+
+❌ "Nodes don't talk"
+   → Reduce to 2-3m
+   → Check antennas vertical
+   → Reset nodes (RST button)
+   → Disable WiFi on Mac
+
+❌ "No monitoring stats"
+   → screen /dev/cu.usbserial-XXXXX 115200
+   → Should see "==== Network Monitoring Stats ====" every 30s
+   → If not, reflash firmware
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  SUCCESS CHECKLIST (after each test)                              ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+✅ Script shows "Data collection complete!"
+✅ 3 CSV files created (sensor, router, gateway)
+✅ Each file 20-100 KB
+✅ ~60 monitoring updates per node
+✅ Duty-cycle <1% (should be 0.1-0.5% at 3 nodes)
+✅ No crashes/errors
+✅ Memory stable (~280-290 KB free)
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  FILES YOU'LL CREATE                                              ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+experiments/results/
+├── flooding/
+│   ├── run1_BB94_sensor.csv      ✓ __/__
+│   ├── run1_6674_router.csv      ✓ __/__
+│   ├── run1_D218_gateway.csv     ✓ __/__
+│   ├── run2_BB94_sensor.csv      ✓ __/__
+│   ├── run2_6674_router.csv      ✓ __/__
+│   ├── run2_D218_gateway.csv     ✓ __/__
+│   ├── run3_BB94_sensor.csv      ✓ __/__
+│   ├── run3_6674_router.csv      ✓ __/__
+│   └── run3_D218_gateway.csv     ✓ __/__
+├── hopcount/
+│   └── (9 files same pattern)    ✓ __/__
+└── cost_routing/
+    └── (9 files same pattern)    ✓ __/__
+
+TARGET: 27 CSV files ✅
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  AFTER WEEK 1: RUN THIS! ↓                                        ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+python3 analysis/scalability_model.py \
+  --data-dir experiments/results \
+  --output-dir experiments/results/figures
+
+→ Generates thesis figures showing:
+  • Flooding breaks ~15 nodes
+  • Hop-count breaks ~40 nodes
+  • Cost routing scales to ~50 nodes ✨
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  DOCUMENTATION HIERARCHY                                          ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+📄 THIS FILE              → Quick commands reference
+📄 QUICKSTART_TESTING.md  → Read first! TL;DR + detailed
+📄 testing_instructions.md → Step-by-step walkthrough
+📄 hardware_test_checklist.md → Planning & tracking
+📄 README_TESTING.md      → Complete summary
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  TIMELINE                                                         ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+TODAY (Oct 21)    → Flooding (2 hrs)
+Oct 22            → Hop-count (2 hrs)
+Oct 23            → Cost routing (2 hrs)
+Oct 24 (buffer)   → Re-runs OR start Week 2!
+Oct 25-31 (Week 2)→ Run scalability_model.py
+Nov 1-7 (Week 3)  → Generate plots & analysis
+Nov 8-14 (Week 4) → Write Results + Discussion
+Nov 15-20 (Week 5)→ Final polish + SUBMIT! 🎓
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  EMERGENCY CONTACTS                                               ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Advisor: ___________________________
+LoRaMesher GitHub: github.com/LoRaMesher/LoRaMesher/issues
+
+╔═══════════════════════════════════════════════════════════════════╗
+║  YOU GOT THIS! 💪                                                 ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Firmware compiled ✅
+Scripts ready ✅
+Instructions written ✅
+Timeline clear ✅
+Professor validated approach ✅
+
+→ START: experiments/QUICKSTART_TESTING.md
+```
