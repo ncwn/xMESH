@@ -215,11 +215,12 @@ class GatewayMonitor:
                 # Progress update every 5 minutes
                 elapsed_sec = int(time.time() - start_time)
                 elapsed_min = elapsed_sec // 60
-                if elapsed_sec % 300 == 0 and elapsed_sec > 0:  # Every 5 minutes
+                if elapsed_sec > 0 and elapsed_sec % 300 == 0:  # Every 5 minutes
                     progress_pct = int((elapsed_sec / duration_sec) * 100)
-                    print(f"Progress: {elapsed_min}/{duration_min} min ({progress_pct}%) - "
+                    print(f"\rProgress: {elapsed_min}/{duration_min} min ({progress_pct}%) - "
                           f"Packets: {self.stats['packets_received']}, "
                           f"Monitoring updates: {self.stats['monitoring_updates']}")
+                    time.sleep(1)  # Prevent duplicate prints
                 
             except Exception as e:
                 print(f"⚠️  Error reading data: {e}")
@@ -267,10 +268,12 @@ class GatewayMonitor:
         # Calculate approximate PDR
         if len(self.stats['packet_timestamps']) > 1:
             test_duration_sec = self.stats['packet_timestamps'][-1] - self.stats['packet_timestamps'][0]
-            expected_packets = int(test_duration_sec / 60)  # 1 packet per minute
+            expected_packets = int(test_duration_sec / 60)  # 1 packet per 60 seconds (sensor sends every 60s)
             if expected_packets > 0:
-                pdr = (self.stats['packets_received'] / expected_packets) * 100
-                print(f"Approximate PDR: {pdr:.1f}% ({self.stats['packets_received']}/{expected_packets} packets)")
+                pdr = min(100.0, (self.stats['packets_received'] / expected_packets) * 100)  # Cap at 100%
+                print(f"Approximate PDR: {pdr:.1f}% ({self.stats['packets_received']}/{expected_packets} packets expected)")
+        else:
+            print(f"Packets received: {self.stats['packets_received']} (insufficient data for PDR calculation)")
     
     def close(self):
         """Close connections"""
