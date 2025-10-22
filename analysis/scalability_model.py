@@ -63,11 +63,16 @@ class ScalabilityAnalyzer:
         print("\n📐 Measuring network parameters from hardware...")
         
         for protocol, data in self.hardware_data.items():
-            # Filter RX events
-            rx_events = data[data['event_type'] == 'RX']
+            # Filter packet events (RX events in gateway logs)
+            rx_events = data[data['event_type'] == 'packet']
             
             if rx_events.empty:
+                print(f"  ⚠️  {protocol}: No packet events found")
                 continue
+            
+            # Remove duplicate packet entries (gateway logs RX + GATEWAY lines for each packet)
+            # Keep only unique packets by sequence number and source
+            rx_events = rx_events.drop_duplicates(subset=['packet_seq', 'packet_source'])
             
             # Measure packet rate (packets per hour)
             if 'timestamp' in rx_events.columns:
@@ -79,7 +84,7 @@ class ScalabilityAnalyzer:
                 packet_rate = 60  # Default: 1 packet/min
             
             # Count unique nodes in test
-            nodes_in_test = len(rx_events['src_addr'].unique()) + 1  # +1 for gateway
+            nodes_in_test = len(rx_events['packet_source'].unique()) + 1  # +1 for gateway
             
             # Store measured parameters
             self.measured_params[protocol] = {
@@ -115,27 +120,30 @@ class ScalabilityAnalyzer:
         toa_hello = params.get('hello_toa_ms', 30) / 1000
         hello_interval = params.get('hello_interval_sec', 120)
         
-        # Assume 1 data packet per minute per sensor node
-        data_packets_per_hour = 60
+        # Realistic LoRa sensor network: ~20% of nodes are active sensors
+        # Each sensor generates 1 packet every 5 minutes (12 per hour)
+        # This models typical environmental monitoring scenarios
+        num_sensor_nodes = max(1, int(num_nodes * 0.2))
+        data_packets_per_hour = 12  # 1 packet every 5 minutes
         
         # Calculate transmissions based on protocol behavior
         if protocol == 'flooding':
             # Flooding: Every node rebroadcasts every packet
-            # Total transmissions = N sensors × packets/hour × N nodes retransmitting
-            data_tx = num_nodes * data_packets_per_hour * num_nodes  # O(N²)
+            # Total transmissions = N_sensors × packets/hour × N nodes retransmitting
+            data_tx = num_sensor_nodes * data_packets_per_hour * num_nodes  # O(N²)
             hello_tx = num_nodes * (3600 / hello_interval)
             
         elif protocol == 'hopcount':
             # Hop-count: Average path length ≈ √N (random topology approximation)
             avg_path_length = max(1, sqrt(num_nodes))
-            data_tx = num_nodes * data_packets_per_hour * avg_path_length  # O(N√N)
+            data_tx = num_sensor_nodes * data_packets_per_hour * avg_path_length  # O(N√N)
             hello_tx = num_nodes * (3600 / hello_interval)
             
         elif protocol == 'cost_routing':
             # Cost routing: Optimized paths reduce hops by ~20% (from hardware observation)
             avg_path_length = max(1, sqrt(num_nodes) * 0.8)
             # Also reduces HELLO overhead by ~30% (stable routes = fewer updates)
-            data_tx = num_nodes * data_packets_per_hour * avg_path_length
+            data_tx = num_sensor_nodes * data_packets_per_hour * avg_path_length
             hello_tx = num_nodes * (3600 / hello_interval) * 0.7
         
         else:
@@ -159,22 +167,23 @@ class ScalabilityAnalyzer:
             overhead_ratio: Ratio of total transmissions to data packets delivered
         """
         params = self.measured_params.get(protocol, {})
-        data_packets_per_hour = 60
+        num_sensor_nodes = max(1, int(num_nodes * 0.2))
+        data_packets_per_hour = 12  # 1 packet every 5 minutes
         
         if protocol == 'flooding':
             # Every packet transmitted by all N nodes
-            total_tx = num_nodes * data_packets_per_hour * num_nodes
-            useful_data = num_nodes * data_packets_per_hour
+            total_tx = num_sensor_nodes * data_packets_per_hour * num_nodes
+            useful_data = num_sensor_nodes * data_packets_per_hour
             
         elif protocol == 'hopcount':
             avg_hops = max(1, sqrt(num_nodes))
-            total_tx = num_nodes * data_packets_per_hour * avg_hops
-            useful_data = num_nodes * data_packets_per_hour
+            total_tx = num_sensor_nodes * data_packets_per_hour * avg_hops
+            useful_data = num_sensor_nodes * data_packets_per_hour
             
         elif protocol == 'cost_routing':
             avg_hops = max(1, sqrt(num_nodes) * 0.8)
-            total_tx = num_nodes * data_packets_per_hour * avg_hops
-            useful_data = num_nodes * data_packets_per_hour
+            total_tx = num_sensor_nodes * data_packets_per_hour * avg_hops
+            useful_data = num_sensor_nodes * data_packets_per_hour
         
         else:
             return 1.0
