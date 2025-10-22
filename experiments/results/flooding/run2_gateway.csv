@@ -1,0 +1,122 @@
+timestamp,event_type,duty_cycle_pct,tx_count,violations,memory_free_kb,memory_total_kb,memory_min_kb,memory_peak_kb,queue_enqueued,queue_dropped,queue_drop_rate_pct,queue_max_depth,packet_seq,packet_source,packet_hops,routing_table_entries,raw_line
+2025-10-21T16:10:06.677265,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:10:32.326634,packet,,,,,,,,,,,,0,BB94,1,,RX: Seq=0 From=BB94 Hops=1 Value=33.43
+2025-10-21T16:10:32.331618,packet,,,,,,,,,,,,0,BB94,1,,"GATEWAY: Packet 0 from BB94 received (hops=1, value=33.43)"
+2025-10-21T16:10:35.349606,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:11:05.365184,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:11:33.201894,packet,,,,,,,,,,,,1,BB94,1,,RX: Seq=1 From=BB94 Hops=1 Value=62.29
+2025-10-21T16:11:33.206860,packet,,,,,,,,,,,,1,BB94,1,,"GATEWAY: Packet 1 from BB94 received (hops=1, value=62.29)"
+2025-10-21T16:11:35.370921,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:12:05.386534,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:12:33.246127,packet,,,,,,,,,,,,2,BB94,1,,RX: Seq=2 From=BB94 Hops=1 Value=0.08
+2025-10-21T16:12:33.251164,packet,,,,,,,,,,,,2,BB94,1,,"GATEWAY: Packet 2 from BB94 received (hops=1, value=0.08)"
+2025-10-21T16:12:35.419226,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:13:05.434780,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:13:33.195375,packet,,,,,,,,,,,,3,BB94,1,,RX: Seq=3 From=BB94 Hops=1 Value=52.56
+2025-10-21T16:13:33.200381,packet,,,,,,,,,,,,3,BB94,1,,"GATEWAY: Packet 3 from BB94 received (hops=1, value=52.56)"
+2025-10-21T16:13:35.440374,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:14:05.455976,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:14:32.845615,packet,,,,,,,,,,,,4,BB94,1,,RX: Seq=4 From=BB94 Hops=1 Value=56.19
+2025-10-21T16:14:32.850607,packet,,,,,,,,,,,,4,BB94,1,,"GATEWAY: Packet 4 from BB94 received (hops=1, value=56.19)"
+2025-10-21T16:14:35.488545,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:15:05.504197,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:15:33.254842,packet,,,,,,,,,,,,5,BB94,1,,RX: Seq=5 From=BB94 Hops=1 Value=11.51
+2025-10-21T16:15:33.260822,packet,,,,,,,,,,,,5,BB94,1,,"GATEWAY: Packet 5 from BB94 received (hops=1, value=11.51)"
+2025-10-21T16:15:35.512777,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:16:05.529400,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:16:32.838021,packet,,,,,,,,,,,,6,BB94,1,,RX: Seq=6 From=BB94 Hops=1 Value=43.05
+2025-10-21T16:16:32.843013,packet,,,,,,,,,,,,6,BB94,1,,"GATEWAY: Packet 6 from BB94 received (hops=1, value=43.05)"
+2025-10-21T16:16:35.554930,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:17:05.570636,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:17:33.013262,packet,,,,,,,,,,,,7,BB94,1,,RX: Seq=7 From=BB94 Hops=1 Value=8.93
+2025-10-21T16:17:33.018238,packet,,,,,,,,,,,,7,BB94,1,,"GATEWAY: Packet 7 from BB94 received (hops=1, value=8.93)"
+2025-10-21T16:17:35.572240,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:18:05.587871,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:18:33.192492,packet,,,,,,,,,,,,8,BB94,1,,RX: Seq=8 From=BB94 Hops=1 Value=30.66
+2025-10-21T16:18:33.197515,packet,,,,,,,,,,,,8,BB94,1,,"GATEWAY: Packet 8 from BB94 received (hops=1, value=30.66)"
+2025-10-21T16:18:35.587441,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:19:05.603088,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:19:33.299744,packet,,,,,,,,,,,,9,BB94,1,,RX: Seq=9 From=BB94 Hops=1 Value=69.32
+2025-10-21T16:19:33.304742,packet,,,,,,,,,,,,9,BB94,1,,"GATEWAY: Packet 9 from BB94 received (hops=1, value=69.32)"
+2025-10-21T16:19:35.612767,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:20:05.628315,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:20:33.221047,packet,,,,,,,,,,,,10,BB94,1,,RX: Seq=10 From=BB94 Hops=1 Value=17.47
+2025-10-21T16:20:33.226869,packet,,,,,,,,,,,,10,BB94,1,,"GATEWAY: Packet 10 from BB94 received (hops=1, value=17.47)"
+2025-10-21T16:20:35.659882,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:21:05.675516,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:21:32.782250,packet,,,,,,,,,,,,11,BB94,1,,RX: Seq=11 From=BB94 Hops=1 Value=72.68
+2025-10-21T16:21:32.788191,packet,,,,,,,,,,,,11,BB94,1,,"GATEWAY: Packet 11 from BB94 received (hops=1, value=72.68)"
+2025-10-21T16:21:35.708225,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:22:05.797917,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:22:33.188961,packet,,,,,,,,,,,,12,BB94,1,,RX: Seq=12 From=BB94 Hops=1 Value=80.23
+2025-10-21T16:22:33.193895,packet,,,,,,,,,,,,12,BB94,1,,"GATEWAY: Packet 12 from BB94 received (hops=1, value=80.23)"
+2025-10-21T16:22:35.825010,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:23:05.842107,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:23:32.973203,packet,,,,,,,,,,,,13,BB94,1,,RX: Seq=13 From=BB94 Hops=1 Value=49.92
+2025-10-21T16:23:32.978220,packet,,,,,,,,,,,,13,BB94,1,,"GATEWAY: Packet 13 from BB94 received (hops=1, value=49.92)"
+2025-10-21T16:23:35.854216,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:24:05.870363,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:24:32.993392,packet,,,,,,,,,,,,14,BB94,1,,RX: Seq=14 From=BB94 Hops=1 Value=64.69
+2025-10-21T16:24:32.998478,packet,,,,,,,,,,,,14,BB94,1,,"GATEWAY: Packet 14 from BB94 received (hops=1, value=64.69)"
+2025-10-21T16:24:35.902434,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:25:05.918595,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:25:32.980702,packet,,,,,,,,,,,,15,BB94,1,,RX: Seq=15 From=BB94 Hops=1 Value=51.27
+2025-10-21T16:25:32.985718,packet,,,,,,,,,,,,15,BB94,1,,"GATEWAY: Packet 15 from BB94 received (hops=1, value=51.27)"
+2025-10-21T16:25:35.923716,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:26:05.944836,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:26:32.913885,packet,,,,,,,,,,,,16,BB94,1,,RX: Seq=16 From=BB94 Hops=1 Value=90.24
+2025-10-21T16:26:32.918981,packet,,,,,,,,,,,,16,BB94,1,,"GATEWAY: Packet 16 from BB94 received (hops=1, value=90.24)"
+2025-10-21T16:26:35.976947,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:27:05.993089,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:27:33.111225,packet,,,,,,,,,,,,17,BB94,1,,RX: Seq=17 From=BB94 Hops=1 Value=35.20
+2025-10-21T16:27:33.117172,packet,,,,,,,,,,,,17,BB94,1,,"GATEWAY: Packet 17 from BB94 received (hops=1, value=35.20)"
+2025-10-21T16:27:36.023209,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:28:06.039315,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:28:32.863344,packet,,,,,,,,,,,,18,BB94,1,,RX: Seq=18 From=BB94 Hops=1 Value=44.10
+2025-10-21T16:28:32.869407,packet,,,,,,,,,,,,18,BB94,1,,"GATEWAY: Packet 18 from BB94 received (hops=1, value=44.10)"
+2025-10-21T16:28:36.067442,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:29:06.083513,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:29:32.707591,packet,,,,,,,,,,,,19,BB94,1,,RX: Seq=19 From=BB94 Hops=1 Value=62.84
+2025-10-21T16:29:32.712581,packet,,,,,,,,,,,,19,BB94,1,,"GATEWAY: Packet 19 from BB94 received (hops=1, value=62.84)"
+2025-10-21T16:29:36.096692,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:30:06.113782,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:30:33.301908,packet,,,,,,,,,,,,20,BB94,1,,RX: Seq=20 From=BB94 Hops=1 Value=63.01
+2025-10-21T16:30:33.306925,packet,,,,,,,,,,,,20,BB94,1,,"GATEWAY: Packet 20 from BB94 received (hops=1, value=63.01)"
+2025-10-21T16:30:36.113888,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:31:06.130012,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:31:33.267124,packet,,,,,,,,,,,,21,BB94,1,,RX: Seq=21 From=BB94 Hops=1 Value=10.36
+2025-10-21T16:31:33.272090,packet,,,,,,,,,,,,21,BB94,1,,"GATEWAY: Packet 21 from BB94 received (hops=1, value=10.36)"
+2025-10-21T16:31:36.161144,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:32:06.182254,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:32:32.993361,packet,,,,,,,,,,,,22,BB94,1,,RX: Seq=22 From=BB94 Hops=1 Value=76.31
+2025-10-21T16:32:32.998382,packet,,,,,,,,,,,,22,BB94,1,,"GATEWAY: Packet 22 from BB94 received (hops=1, value=76.31)"
+2025-10-21T16:32:36.182377,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:33:06.198482,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:33:33.122659,packet,,,,,,,,,,,,23,BB94,1,,RX: Seq=23 From=BB94 Hops=1 Value=29.97
+2025-10-21T16:33:33.127622,packet,,,,,,,,,,,,23,BB94,1,,"GATEWAY: Packet 23 from BB94 received (hops=1, value=29.97)"
+2025-10-21T16:33:36.205671,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:34:06.221750,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:34:33.405939,packet,,,,,,,,,,,,24,BB94,1,,RX: Seq=24 From=BB94 Hops=1 Value=75.91
+2025-10-21T16:34:33.411847,packet,,,,,,,,,,,,24,BB94,1,,"GATEWAY: Packet 24 from BB94 received (hops=1, value=75.91)"
+2025-10-21T16:34:36.221799,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:35:06.237999,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:35:32.935147,packet,,,,,,,,,,,,25,BB94,1,,RX: Seq=25 From=BB94 Hops=1 Value=90.44
+2025-10-21T16:35:32.941016,packet,,,,,,,,,,,,25,BB94,1,,"GATEWAY: Packet 25 from BB94 received (hops=1, value=90.44)"
+2025-10-21T16:35:36.249150,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:36:06.265302,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:36:32.923353,packet,,,,,,,,,,,,26,BB94,1,,RX: Seq=26 From=BB94 Hops=1 Value=34.25
+2025-10-21T16:36:32.928350,packet,,,,,,,,,,,,26,BB94,1,,"GATEWAY: Packet 26 from BB94 received (hops=1, value=34.25)"
+2025-10-21T16:36:36.293352,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:37:06.310495,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:37:32.920587,packet,,,,,,,,,,,,27,BB94,1,,RX: Seq=27 From=BB94 Hops=1 Value=29.30
+2025-10-21T16:37:32.925604,packet,,,,,,,,,,,,27,BB94,1,,"GATEWAY: Packet 27 from BB94 received (hops=1, value=29.30)"
+2025-10-21T16:37:36.315607,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:38:06.331685,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:38:33.217834,packet,,,,,,,,,,,,28,BB94,1,,RX: Seq=28 From=BB94 Hops=1 Value=27.26
+2025-10-21T16:38:33.222816,packet,,,,,,,,,,,,28,BB94,1,,"GATEWAY: Packet 28 from BB94 received (hops=1, value=27.26)"
+2025-10-21T16:38:36.361883,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:39:06.377964,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:39:33.077970,packet,,,,,,,,,,,,29,BB94,1,,RX: Seq=29 From=BB94 Hops=1 Value=43.34
+2025-10-21T16:39:33.083034,packet,,,,,,,,,,,,29,BB94,1,,"GATEWAY: Packet 29 from BB94 received (hops=1, value=43.34)"
+2025-10-21T16:39:36.381053,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
+2025-10-21T16:40:06.397195,monitoring,0.0,0,0,324,383,324,59,,,,,,,,,"Memory: 324/383 KB free, Min: 324 KB, Peak: 59 KB"
