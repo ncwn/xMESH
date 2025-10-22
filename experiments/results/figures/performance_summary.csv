@@ -1,0 +1,4 @@
+Protocol,Mean_PDR,Std_PDR,Mean_Latency,Std_Latency,Mean_Free_Memory,Memory_Stability_CV
+Flooding,100.00,0.00,60.01,0.29,324.00,0.00
+Hop-Count,100.00,0.00,59.99,0.27,324.00,0.00
+Cost Routing,100.00,0.00,59.99,0.31,323.00,0.00
