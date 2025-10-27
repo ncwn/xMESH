@@ -56,6 +56,9 @@ class GatewayMonitor:
             'rx_packet': re.compile(r'RX: Seq=(\d+) From=([A-F0-9]+) Hops=(\d+)'),
             'gateway_packet': re.compile(r'GATEWAY: Packet (\d+) from ([A-F0-9]+) received \(hops=(\d+)'),
             'routing_table_size': re.compile(r'Routing table: (\d+) entries'),
+            'trickle_stats': re.compile(r'\[Trickle\] TX=(\d+), Suppressed=(\d+), Efficiency=([\d.]+)%, I=([\d.]+)s'),
+            'trickle_transmit': re.compile(r'\[Trickle\] TRANSMIT - count=(\d+), interval=([\d.]+)s'),
+            'trickle_double': re.compile(r'\[Trickle\] DOUBLE - I=([\d.]+)s'),
         }
     
     def connect(self):
@@ -76,7 +79,7 @@ class GatewayMonitor:
             # Write header
             self.csv_writer.writerow([
                 'timestamp',
-                'event_type',  # 'monitoring' or 'packet'
+                'event_type',  # 'monitoring', 'packet', 'trickle_transmit', or 'trickle_double'
                 'duty_cycle_pct',
                 'tx_count',
                 'violations',
@@ -92,6 +95,10 @@ class GatewayMonitor:
                 'packet_source',
                 'packet_hops',
                 'routing_table_entries',
+                'trickle_tx_count',
+                'trickle_suppressed',
+                'trickle_efficiency_pct',
+                'trickle_interval_s',
                 'raw_line'
             ])
             
@@ -183,11 +190,49 @@ class GatewayMonitor:
                         rt_size = int(match.group(1))
                         current_monitoring['routing_table_entries'] = rt_size
                     
+                    # Parse Trickle stats in monitoring
+                    match = self.patterns['trickle_stats'].search(line)
+                    if match:
+                        trickle_tx = int(match.group(1))
+                        trickle_suppressed = int(match.group(2))
+                        trickle_efficiency = float(match.group(3))
+                        trickle_interval = float(match.group(4))
+                        current_monitoring.update({
+                            'trickle_tx_count': trickle_tx,
+                            'trickle_suppressed': trickle_suppressed,
+                            'trickle_efficiency_pct': trickle_efficiency,
+                            'trickle_interval_s': trickle_interval
+                        })
+                    
                     # Write complete monitoring data
                     if 'duty_cycle_pct' in current_monitoring and 'memory_free_kb' in current_monitoring:
                         self._write_row(current_monitoring, line)
                         self.stats['monitoring_updates'] += 1
                         current_monitoring = {}
+                    
+                    # Parse Trickle TRANSMIT events
+                    match = self.patterns['trickle_transmit'].search(line)
+                    if match:
+                        trickle_count = int(match.group(1))
+                        trickle_interval = float(match.group(2))
+                        trickle_data = {
+                            'timestamp': timestamp,
+                            'event_type': 'trickle_transmit',
+                            'trickle_tx_count': trickle_count,
+                            'trickle_interval_s': trickle_interval
+                        }
+                        self._write_row(trickle_data, line)
+                    
+                    # Parse Trickle DOUBLE events
+                    match = self.patterns['trickle_double'].search(line)
+                    if match:
+                        trickle_interval = float(match.group(1))
+                        trickle_data = {
+                            'timestamp': timestamp,
+                            'event_type': 'trickle_double',
+                            'trickle_interval_s': trickle_interval
+                        }
+                        self._write_row(trickle_data, line)
                     
                     # Parse received packets
                     match = self.patterns['gateway_packet'].search(line)
@@ -249,6 +294,10 @@ class GatewayMonitor:
             data.get('packet_source', ''),
             data.get('packet_hops', ''),
             data.get('routing_table_entries', ''),
+            data.get('trickle_tx_count', ''),
+            data.get('trickle_suppressed', ''),
+            data.get('trickle_efficiency_pct', ''),
+            data.get('trickle_interval_s', ''),
             raw_line
         ])
         self.csv_file.flush()
@@ -301,7 +350,7 @@ Example:
     parser.add_argument('--port', required=True,
                        help='Serial port for gateway node (D218)')
     parser.add_argument('--protocol', required=True,
-                       choices=['flooding', 'hopcount', 'cost_routing'],
+                       choices=['flooding', 'hopcount', 'cost_routing', 'cost_trickle'],
                        help='Protocol being tested')
     parser.add_argument('--run-number', type=int, required=True,
                        help='Run number (1, 2, or 3)')

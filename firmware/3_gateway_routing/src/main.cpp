@@ -50,8 +50,15 @@
 #define SNR_MAX         10    // Maximum SNR (dB)
 
 // ETX tracking configuration
-#define ETX_WINDOW_SIZE 20    // Number of packets to track for ETX
+#define ETX_WINDOW_SIZE 10    // Sliding window size for ETX calculation
 #define ETX_DEFAULT     1.5   // Default ETX for new links
+#define ETX_ALPHA       0.3   // EWMA smoothing factor (0-1, higher = more weight to recent)
+
+// Trickle Timer Configuration (RFC 6206-inspired adaptive HELLO scheduler)
+#define TRICKLE_IMIN_MS     60000   // Minimum interval: 60 seconds
+#define TRICKLE_IMAX_MS     600000  // Maximum interval: 600 seconds (10 minutes)
+#define TRICKLE_K           1       // Redundancy constant (suppress if heard k HELLOs)
+#define TRICKLE_ENABLED     true    // Set false to disable Trickle (use fixed 120s)
 
 // Heltec V3 Custom SPI pins (required for proper operation)
 #define LORA_MOSI   10
@@ -101,13 +108,25 @@ struct LinkMetrics {
     uint16_t address;           // Neighbor address
     int16_t rssi;               // Last RSSI (dBm) - extended from LoRaMesher
     int8_t snr;                 // Last SNR (dB) - from LoRaMesher receivedSNR
-    float etx;                  // Expected Transmission Count
-    uint32_t txAttempts;        // Total transmission attempts
-    uint32_t txSuccess;         // Successful transmissions
+    float etx;                  // Expected Transmission Count (EWMA smoothed)
+    
+    // Sliding window for ETX calculation
+    bool txWindow[ETX_WINDOW_SIZE];  // Transmission results (true = success, false = failure)
+    uint8_t windowIndex;             // Current position in circular buffer
+    uint8_t windowFilled;            // Number of valid entries in window
+    
+    uint32_t totalTxAttempts;   // Total transmission attempts (for statistics)
+    uint32_t totalTxSuccess;    // Total successful transmissions
     uint32_t lastUpdate;        // Timestamp of last update
     
     LinkMetrics() : address(0), rssi(-120), snr(-20), etx(ETX_DEFAULT), 
-                    txAttempts(0), txSuccess(0), lastUpdate(0) {}
+                    windowIndex(0), windowFilled(0),
+                    totalTxAttempts(0), totalTxSuccess(0), lastUpdate(0) {
+        // Initialize sliding window with default (assume 67% success = ETX 1.5)
+        for (int i = 0; i < ETX_WINDOW_SIZE; i++) {
+            txWindow[i] = (i % 3 != 0);  // 2 success, 1 failure pattern
+        }
+    }
 };
 
 // Link quality tracking (max 10 neighbors)
@@ -122,6 +141,204 @@ struct GatewayLoad {
 };
 GatewayLoad gatewayLoads[5];  // Support up to 5 gateways
 uint8_t numGateways = 0;
+
+// ============================================================================
+// Trickle Timer for Adaptive HELLO Packet Scheduling
+// ============================================================================
+
+/**
+ * @brief Trickle-inspired adaptive timer for HELLO packet scheduling
+ * 
+ * Implementation based on RFC 6206 principles:
+ * - Exponential backoff when network is stable
+ * - Fast convergence on topology changes
+ * - Suppression of redundant transmissions
+ * 
+ * State machine:
+ * - IDLE: Not transmitting HELLOs (initial state)
+ * - ACTIVE: Normal operation with adaptive interval
+ * - RESET: Topology change detected, reset to I_min
+ */
+class TrickleTimer {
+private:
+    uint32_t I_min;             // Minimum interval (ms)
+    uint32_t I_max;             // Maximum interval (ms)
+    uint32_t I_current;         // Current interval (ms)
+    uint8_t k;                  // Redundancy constant
+    
+    uint32_t intervalStart;     // Start time of current interval
+    uint32_t nextTransmit;      // Time of next transmission
+    uint8_t consistentHeard;    // Count of consistent messages heard
+    
+    bool enabled;               // Enable/disable Trickle
+    uint32_t transmitCount;     // Total transmissions
+    uint32_t suppressCount;     // Suppressed transmissions
+    
+    enum State {
+        IDLE,
+        ACTIVE,
+        RESET
+    } state;
+
+public:
+    TrickleTimer(uint32_t imin = TRICKLE_IMIN_MS, 
+                 uint32_t imax = TRICKLE_IMAX_MS,
+                 uint8_t k_val = TRICKLE_K,
+                 bool enable = TRICKLE_ENABLED) 
+        : I_min(imin), I_max(imax), I_current(imin), k(k_val),
+          intervalStart(0), nextTransmit(0), consistentHeard(0),
+          enabled(enable), transmitCount(0), suppressCount(0),
+          state(IDLE) {}
+    
+    /**
+     * @brief Start the Trickle timer
+     */
+    void start() {
+        if (!enabled) return;
+        state = ACTIVE;
+        I_current = I_min;
+        reset();
+        Serial.printf("[Trickle] Started - I=%.1fs\n", I_current/1000.0);
+    }
+    
+    /**
+     * @brief Reset timer to minimum interval (on topology change)
+     */
+    void reset() {
+        if (!enabled) return;
+        
+        I_current = I_min;
+        consistentHeard = 0;
+        intervalStart = millis();
+        
+        // Random point in interval [I/2, I] for transmission
+        uint32_t halfInterval = I_current / 2;
+        nextTransmit = intervalStart + halfInterval + random(halfInterval);
+        
+        state = RESET;
+        Serial.printf("[Trickle] RESET - I=%.1fs, next TX in %.1fs\n", 
+                     I_current/1000.0, (nextTransmit - millis())/1000.0);
+    }
+    
+    /**
+     * @brief Double the interval (on stable period)
+     */
+    void doubleInterval() {
+        if (!enabled) return;
+        
+        I_current = min(I_current * 2, I_max);
+        consistentHeard = 0;
+        intervalStart = millis();
+        
+        uint32_t halfInterval = I_current / 2;
+        nextTransmit = intervalStart + halfInterval + random(halfInterval);
+        
+        state = ACTIVE;
+        Serial.printf("[Trickle] DOUBLE - I=%.1fs, next TX in %.1fs\n", 
+                     I_current/1000.0, (nextTransmit - millis())/1000.0);
+    }
+    
+    /**
+     * @brief Check if interval has expired
+     */
+    bool intervalExpired() {
+        if (!enabled) return true;  // Act like normal timer if disabled
+        return (millis() - intervalStart) >= I_current;
+    }
+    
+    /**
+     * @brief Check if should transmit now
+     * @return true if transmission should occur
+     */
+    bool shouldTransmit() {
+        if (!enabled) return true;  // Always transmit if Trickle disabled
+        
+        uint32_t now = millis();
+        
+        // Check if interval expired - start new interval
+        if (intervalExpired()) {
+            doubleInterval();
+            return false;  // Don't transmit immediately after doubling
+        }
+        
+        // Check if reached transmission point (only once per interval!)
+        if (now >= nextTransmit && state != IDLE) {
+            // Mark transmission point as passed to avoid repeated triggers
+            nextTransmit = UINT32_MAX;  // Set to max value so this triggers only once
+            
+            // Check suppression: if heard k consistent messages, suppress
+            if (consistentHeard >= k) {
+                suppressCount++;
+                Serial.printf("[Trickle] SUPPRESS - heard %d consistent HELLOs\n", 
+                             consistentHeard);
+                return false;
+            }
+            
+            transmitCount++;
+            Serial.printf("[Trickle] TRANSMIT - count=%u, interval=%.1fs\n", 
+                         transmitCount, I_current/1000.0);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * @brief Notify that a consistent HELLO was heard
+     */
+    void heardConsistent() {
+        if (!enabled) return;
+        consistentHeard++;
+    }
+    
+    /**
+     * @brief Notify that an inconsistent HELLO was heard (topology change)
+     */
+    void heardInconsistent() {
+        if (!enabled) return;
+        Serial.println("[Trickle] Inconsistent HELLO - resetting");
+        reset();
+    }
+    
+    /**
+     * @brief Get current interval in seconds
+     */
+    float getCurrentIntervalSec() {
+        return I_current / 1000.0;
+    }
+    
+    /**
+     * @brief Get statistics
+     */
+    void printStats() {
+        if (!enabled) {
+            Serial.println("[Trickle] DISABLED - using fixed interval");
+            return;
+        }
+        Serial.printf("[Trickle] TX=%u, Suppressed=%u, Efficiency=%.1f%%, I=%.1fs\n",
+                     transmitCount, suppressCount,
+                     (suppressCount * 100.0) / max(transmitCount + suppressCount, 1u),
+                     I_current/1000.0);
+    }
+    
+    /**
+     * @brief Check if Trickle is enabled
+     */
+    bool isEnabled() { return enabled; }
+    
+    /**
+     * @brief Get transmit count for logging
+     */
+    uint32_t getTransmitCount() { return transmitCount; }
+    
+    /**
+     * @brief Get suppress count for logging
+     */
+    uint32_t getSuppressCount() { return suppressCount; }
+};
+
+// Global Trickle timer instance
+TrickleTimer trickleTimer;
 
 // ============================================================================
 // Week 1: Network Monitoring Structures (for analytical model)
@@ -410,6 +627,9 @@ float calculateRouteCost(uint8_t hops, uint16_t nextHop, uint16_t destAddr) {
     return cost;
 }
 
+// Forward declaration for ETX update function
+void updateETX(uint16_t address, bool success);
+
 /**
  * @brief Update link metrics from received packet
  * @param address Source address
@@ -432,36 +652,77 @@ void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr) {
     
     link->lastUpdate = millis();
     
+    // Update ETX: Successful packet reception = successful transmission from sender
+    updateETX(address, true);
+    
     Serial.printf("Link %04X: RSSI=%d dBm, SNR=%d dB, ETX=%.2f\n", 
                  address, link->rssi, link->snr, link->etx);
 }
 
 /**
- * @brief Update ETX for a link after transmission attempt
+ * @brief Update ETX for a link after transmission attempt (Enhanced with Sliding Window + EWMA)
  * @param address Neighbor address
  * @param success True if transmission succeeded
+ * 
+ * Algorithm:
+ * 1. Add new transmission result to sliding window (circular buffer)
+ * 2. Calculate delivery ratio from window
+ * 3. Compute instantaneous ETX = 1 / delivery_ratio
+ * 4. Apply EWMA smoothing: ETX_new = α × ETX_instant + (1-α) × ETX_old
+ * 
+ * Benefits over simple counting:
+ * - Sliding window: Only recent packets affect ETX (time-decayed)
+ * - EWMA smoothing: Reduces jitter from single packet losses
+ * - Continuous updates: ETX updates every packet, not every N packets
  */
 void updateETX(uint16_t address, bool success) {
     LinkMetrics* link = getLinkMetrics(address);
     
-    link->txAttempts++;
-    if (success) link->txSuccess++;
+    // Add transmission result to sliding window (circular buffer)
+    link->txWindow[link->windowIndex] = success;
+    link->windowIndex = (link->windowIndex + 1) % ETX_WINDOW_SIZE;
     
-    // Update ETX every 10 packets to smooth out variations
-    if (link->txAttempts >= 10) {
-        float deliveryRatio = (float)link->txSuccess / link->txAttempts;
-        if (deliveryRatio > 0.01) {  // Avoid division by very small numbers
-            link->etx = 1.0 / deliveryRatio;
-        } else {
-            link->etx = 100.0;  // Essentially unreachable
-        }
-        
-        // Reset counters for next window
-        link->txAttempts = 0;
-        link->txSuccess = 0;
-        
-        Serial.printf("ETX updated for %04X: %.2f (delivery: %.1f%%)\n",
-                     address, link->etx, deliveryRatio * 100);
+    // Track window fill status (for initial packets)
+    if (link->windowFilled < ETX_WINDOW_SIZE) {
+        link->windowFilled++;
+    }
+    
+    // Update total statistics (for monitoring)
+    link->totalTxAttempts++;
+    if (success) link->totalTxSuccess++;
+    
+    // Calculate delivery ratio from sliding window
+    uint8_t successCount = 0;
+    for (uint8_t i = 0; i < link->windowFilled; i++) {
+        if (link->txWindow[i]) successCount++;
+    }
+    
+    float deliveryRatio = (float)successCount / link->windowFilled;
+    
+    // Calculate instantaneous ETX
+    float instantETX;
+    if (deliveryRatio > 0.01) {  // Avoid division by very small numbers
+        instantETX = 1.0 / deliveryRatio;
+    } else {
+        instantETX = 100.0;  // Essentially unreachable
+    }
+    
+    // Apply EWMA smoothing (only after window has some data)
+    if (link->windowFilled >= 3) {  // Wait for at least 3 samples
+        link->etx = ETX_ALPHA * instantETX + (1.0 - ETX_ALPHA) * link->etx;
+    } else {
+        link->etx = instantETX;  // Bootstrap phase: use instant value
+    }
+    
+    // Clamp ETX to reasonable range [1.0, 10.0]
+    if (link->etx < 1.0) link->etx = 1.0;
+    if (link->etx > 10.0) link->etx = 10.0;
+    
+    // Periodic logging (every 10th packet) for production use
+    if (link->totalTxAttempts % 10 == 0) {
+        Serial.printf("ETX updated for %04X: %.2f (window: %d/%d, instant: %.2f, lifetime: %.1f%%)\n",
+                     address, link->etx, successCount, link->windowFilled, instantETX,
+                     (float)link->totalTxSuccess / link->totalTxAttempts * 100);
     }
 }
 
@@ -693,6 +954,15 @@ void setupLoraMesher() {
 
     // Start radio (this enables automatic routing)
     radio.start();
+    
+    // Initialize Trickle timer for adaptive HELLO scheduling
+    trickleTimer.start();
+    Serial.printf("Trickle timer: %s\n", 
+                 trickleTimer.isEnabled() ? "ENABLED" : "DISABLED (fixed 120s)");
+    if (trickleTimer.isEnabled()) {
+        Serial.printf("  I_min=%.1fs, I_max=%.1fs, k=%d\n",
+                     TRICKLE_IMIN_MS/1000.0, TRICKLE_IMAX_MS/1000.0, TRICKLE_K);
+    }
 
     // If this is a gateway, set the gateway role so other nodes can find it
     if (IS_GATEWAY) {
@@ -711,7 +981,15 @@ void setupLoraMesher() {
     Serial.printf("TX Power: %d dBm\n", config.power);
     Serial.println("========================================");
     Serial.println("\nWaiting for network discovery...");
-    Serial.println("HELLO packets will be sent every 120 seconds");
+    if (trickleTimer.isEnabled()) {
+        Serial.println("NOTE: Trickle timer implemented - adaptive HELLO intervals");
+        Serial.printf("      Initial: %.1fs, Max: %.1fs\n", 
+                     TRICKLE_IMIN_MS/1000.0, TRICKLE_IMAX_MS/1000.0);
+        Serial.println("      Full integration requires LoRaMesher library modification");
+        Serial.println("      Current: Independent timer for overhead tracking");
+    } else {
+        Serial.println("HELLO packets will be sent every 120 seconds");
+    }
     Serial.println("Routing table will build automatically\n");
 }
 
@@ -851,6 +1129,14 @@ void loop() {
                      txCount, rxCount, radio.routingTableSize());
     }
     
+    // Check Trickle timer periodically (not every loop iteration!)
+    // Trickle just tracks timing, doesn't actually send HELLOs (that's LoRaMesher's job)
+    static uint32_t lastTrickleCheck = 0;
+    if (trickleTimer.isEnabled() && (millis() - lastTrickleCheck > 1000)) {
+        lastTrickleCheck = millis();
+        trickleTimer.shouldTransmit();  // Check once per second, not every 100ms
+    }
+    
     // Evaluate routes based on cost function every 10 seconds
     static uint32_t lastCostEvaluation = 0;
     if (millis() - lastCostEvaluation > 10000) {
@@ -910,6 +1196,7 @@ void loop() {
         channelMonitor.printStats();
         memoryMonitor.printStats();
         queueMonitor.printStats();
+        trickleTimer.printStats();
         
         // Print routing table memory usage
         Serial.printf("Routing table: %d entries × ~32 bytes = ~%d KB\n",
