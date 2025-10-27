@@ -1,5 +1,5 @@
 # Changelog
-All notable changes to the xMESH LoRa Mesh Network Research Project.
+All notable changes to the LoRa Mesh Network with Optimized Routing Protocol research project.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 

@@ -1,4 +1,4 @@
-# xMESH: Scalable LoRa Mesh Networking
+# Design and Implementation of a LoRa Mesh Network with an Optimized Routing Protocol
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: ESP32](https://img.shields.io/badge/Platform-ESP32-blue.svg)](https://www.espressif.com/en/products/socs/esp32)
@@ -7,13 +7,17 @@
 
 Advanced LoRa mesh networking protocols with adaptive overhead reduction and intelligent routing for ESP32-based systems.
 
+> **Master's Thesis Research Project** by Nyein Chan Win Naing  
+> Asian Institute of Technology (AIT), School of Engineering and Technology  
+> December 2025
+
 > **Note:** This project is built on top of the [LoRaMesher](https://github.com/LoRaMesher/LoRaMesher) library and extends it with adaptive algorithms (Trickle scheduler) and enhanced link metrics (ETX sliding window with EWMA smoothing).
 
 ---
 
 ## Overview
 
-xMESH implements three LoRa mesh networking protocols with progressive enhancements:
+This project implements three LoRa mesh networking protocols with progressive enhancements:
 
 1. **Flooding** - Baseline broadcast protocol
 2. **Hopcount** - Shortest path routing  
@@ -104,6 +108,7 @@ Cost = 0.7 × ETX + 0.3 × normalized_RSSI
 
 1. **Clone repository**
 ```bash
+```bash
 git clone https://github.com/ncwn/xMESH.git
 cd xMESH
 ```
@@ -148,7 +153,7 @@ python gateway_data_collection.py \
 ## Repository Structure
 
 ```
-xMESH/
+LoRa-Mesh-Network/
 ├── firmware/                      # Protocol implementations (3 variants)
 │   ├── 1_flooding/               # Baseline: Broadcast flooding (O(N²))
 │   ├── 2_hopcount/               # Baseline: Hopcount routing (O(N√N))
@@ -381,7 +386,9 @@ This project is built on top of the [LoRaMesher](https://github.com/LoRaMesher/L
 - GitHub: https://github.com/LoRaMesher/LoRaMesher
 - Used for: Core routing functionality, packet handling, and LoRa radio management
 
-**xMESH Contributions:**
+## Acknowledgments
+
+**Based on LoRaMesher Library:**
 - Trickle adaptive HELLO scheduler (RFC 6206)
 - ETX sliding window with EWMA smoothing
 - Multi-factor cost routing optimization
@@ -401,11 +408,14 @@ This project uses the LoRaMesher library, which is also released under MIT Licen
 If you use this work in your research, please cite:
 
 ```bibtex
-@mastersthesis{ncwn2025xmesh,
+@mastersthesis{naing2025lora,
   author = {Nyein Chan Win Naing},
-  title = {Scalable LoRa Mesh Networking with Adaptive Overhead Reduction},
+  title = {Design and Implementation of a LoRa Mesh Network with an Optimized Routing Protocol},
   school = {Asian Institute of Technology},
   year = {2025},
+  type = {Master's Thesis},
+  address = {Thailand}
+}
   month = {December}
 }
 ```
