@@ -20,11 +20,11 @@ Advanced LoRa mesh networking protocols with adaptive overhead reduction and int
 This project implements three LoRa mesh networking protocols with progressive enhancements:
 
 1. **Flooding** - Baseline broadcast protocol
-2. **Hopcount** - Shortest path routing  
-3. **Cost + Trickle + ETX** - Enhanced protocol with:
-   - 🔄 **Trickle adaptive HELLO**: 90% overhead reduction
-   - 📊 **ETX sliding window**: Link quality tracking with EWMA smoothing
-   - 🎯 **Multi-factor cost routing**: RSSI + ETX optimization
+2. **Hopcount** - Shortest path routing
+3. **Cost + Trickle + ETX** *(in development)* - Enhanced protocol roadmap adds:
+   - 🔄 **Trickle adaptive HELLO**: LoRaMesher HELLO cadence now driven by Trickle callbacks; hardware validation pending.
+   - 📊 **ETX sliding window**: Sliding window + EWMA logic in place; needs failure reporting and routing feedback.
+   - 🎯 **Multi-factor cost routing**: Cost calculation scaffolding ready; re-routing logic still TODO.
 
 **Hardware:** Heltec WiFi LoRa 32 V3 (ESP32-S3 + SX1262)
 
@@ -32,25 +32,28 @@ This project implements three LoRa mesh networking protocols with progressive en
 
 ## Key Features
 
-### Trickle Adaptive HELLO Scheduler
-- **Exponential backoff**: 60s → 120s → 240s → 480s → 600s
-- **90% overhead reduction**: 3 vs 30 HELLO messages per hour
-- **100% PDR maintained**: No performance degradation
-- **RFC 6206 compliant**: Standard Trickle algorithm implementation
+### Trickle Adaptive HELLO Scheduler *(bench validation pending)*
+- **LoRaMesher integration**: HELLO task now consults Trickle callbacks for transmission permission and per-interval delays.
+- **Scheduling logic**: RFC 6206-style backoff (60s → 600s) with suppression counters and k=1 redundancy.
+- **Fairness safeguards**: First HELLO is always transmitted, and suppression is capped to avoid starving neighbors (forces a HELLO after 4 consecutive suppressions).
+- **Next steps**: Run bench test to capture HELLO cadence vs baseline and document suppression/interval metrics.
 
-### Enhanced ETX Metric
-- **Sliding window**: 10-packet circular buffer
-- **EWMA smoothing**: α=0.3 for stable link quality estimation
-- **Continuous updates**: Real-time tracking of link conditions
-- **Improved routing**: Better path selection based on delivery probability
+### Enhanced ETX Metric *(routing feedback TODO)*
+- **Sliding window**: 10-packet circular buffer with EWMA smoothing (α = 0.3).
+- **Current status**: Success path updates implemented; failure reporting + cost feedback still needed.
+- **Goal**: Use ETX to bias routing choices once full feedback loop is in place.
 
-### Multi-Factor Cost Routing
+### Multi-Factor Cost Routing *(re-route logic pending)*
 ```c
-Cost = 0.7 × ETX + 0.3 × normalized_RSSI
+Cost = W1*hops
+     + W2*(1 - normalized_RSSI)
+     + W3*(1 - normalized_SNR)
+     + W4*(etx - 1)
+     + W5*gateway_bias;
 ```
-- Balances link quality (ETX) and signal strength (RSSI)
-- Hysteresis prevents route flapping
-- Gateway-aware path optimization
+- Default weights: W1=1.0, W2=0.3, W3=0.2, W4=0.4, W5=1.0 (tunable).
+- Helper functions normalise RSSI/SNR and maintain ETX; results are logged to serial/OLED for inspection.
+- Hysteresis, gateway load balancing updates, and actual route adjustments remain TODO items.
 
 ---
 
@@ -82,18 +85,18 @@ Cost = 0.7 × ETX + 0.3 × normalized_RSSI
 **Enhanced adaptive protocol** with overhead reduction and intelligent routing.
 
 **Features:**
-- **Trickle HELLO scheduler**: 90% overhead reduction (RFC 6206)
-- **ETX sliding window**: 10-packet circular buffer with EWMA smoothing (α=0.3)
-- **Multi-factor cost**: `Cost = 0.7 × ETX + 0.3 × normalized_RSSI`
-- **Route stability**: Hysteresis prevents flapping
-- Low overhead: O(0.8N√N) complexity with Trickle
+- **Trickle HELLO scheduler**: RFC 6206-style timer implemented; HELLO hook + validation pending.
+- **ETX sliding window**: 10-packet buffer with EWMA (α=0.3) logging link quality; routing feedback TODO.
+- **Multi-factor cost**: Uses weights (W1-5) to combine hops, RSSI, SNR, ETX, gateway bias; re-route logic still under construction.
+- **Route stability**: Hysteresis constants defined; activation tied to cost-based routing work.
+- Goal: Achieve sub-O(N) overhead once Trickle + cost logic are fully integrated.
 
 **Use case:** Large networks (15-30 nodes), duty-cycle constrained, scalability required
 
-**Trickle Behavior:**
-- Stable network: 60s → 120s → 240s → 480s → 600s (exponential backoff)
-- Topology change: Resets to 60s for fast convergence
-- Result: ~6 HELLOs/hour vs 30 HELLOs/hour baseline
+**Trickle Behavior (planned):**
+- Stable network target: 60s → 120s → 240s → 480s → 600s exponential backoff.
+- Topology change should reset to 60s for fast convergence once HELLO hook is in place.
+- Post-integration goal: ~6 HELLOs/hour vs 30 HELLOs/hour baseline (to be validated).
 
 ---
 
@@ -142,7 +145,7 @@ cd ../../utilities
 source ../venv/bin/activate
 python gateway_data_collection.py \
   --port /dev/cu.usbserial-0001 \
-  --protocol cost_trickle \
+  --protocol cost_routing \
   --run-number 1 \
   --duration 60 \
   --output-dir ../experiments/results/
@@ -168,51 +171,74 @@ LoRa-Mesh-Network/
 │   ├── gateway_performance_analysis.py  # Week 1 comparison
 │   └── performance_analysis.py   # Week 6-7 comparison
 │
-├── experiments/                   # Testing and results
-│   ├── results/                  # CSV data files + figures/
-│   ├── CURRENT_TESTING_PLAN.md   # 🔗 Step-by-step testing guide
-│   └── OCT_27_PROGRESS_SUMMARY.md # Phase 4 completion report
+├── experiments/                   # Testing configs + captured results
+│   ├── configs/                  # Experiment parameter templates
+│   └── results/                  # CSV datasets + generated figures
 │
 ├── src/                           # LoRaMesher library source
-├── docs/diagrams/                 # Architecture diagrams
-│
+├── docs/                          # Additional documentation + diagrams
+├── proposal_docs/                 # Thesis proposal, notes, and diagrams
 ├── README.md                      # 🌟 This file - main documentation
 ├── AI_HANDOFF.md                  # Context for AI assistants
-├── CHANGELOG.md                   # Version history
-└── IMPLEMENTATION_LOG.md          # Technical change log
-└── diagrams/                 # System architecture
+└── CHANGELOG.md                   # Version history
 ```
 
 **Folder Purposes:**
-- **`utilities/`**: Real-time data collection during tests (captures serial port → CSV)
-- **`analysis/`**: Post-test data processing (CSV → figures, statistics, modeling)
+- **`utilities/`** – Real-time data collection during tests (captures serial port → CSV).
+- **`analysis/`** – Post-test data processing (CSV → figures, statistics, modeling).
+- **`experiments/`** – Parameter configs plus archived CSV datasets/figures from runs.
+- **`proposal_docs/`** – Thesis proposal draft, presentation notes, Mermaid diagrams.
 ---
 
 **📖 Key Documentation:**
-- [**Testing Procedures**](experiments/CURRENT_TESTING_PLAN.md) - Step-by-step testing guide
-- [**Progress Report**](experiments/OCT_27_PROGRESS_SUMMARY.md) - Latest development status
-- [**Implementation Log**](IMPLEMENTATION_LOG.md) - Technical change history
-- [**AI Handoff**](AI_HANDOFF.md) - Project context for AI assistants
+- [**CHANGELOG.md**](CHANGELOG.md) – Version history & milestone notes.
+- [**AI_HANDOFF.md**](AI_HANDOFF.md) – Context for collaborators and next actions.
+- [**proposal_docs/**](proposal_docs/) – Thesis proposal, presentation notes, and diagram sources.
 
 ---
 
-## Results
+## Validation Plan
 
-### Trickle HELLO Overhead Reduction
-| Metric | Baseline | With Trickle | Improvement |
-|--------|----------|--------------|-------------|
-| HELLO messages/hour | 60 | 6 | **90% reduction** |
-| PDR | 100% | 100% | No degradation |
-| Trickle interval | - | Reaches 600s max | ✓ Converged |
-| Memory usage | 324 KB | 323 KB | Stable |
+### Trickle HELLO Overhead Reduction *(to measure)*
+- Baseline reference: LoRaMesher HELLO interval fixed at 120s (~60 packets/hour).
+- Target: Demonstrate reduced HELLO transmissions once Trickle timer controls LoRaMesher HELLO scheduling.
+- Actions: ✅ Timer integrated with LoRaMesher → collect before/after HELLO metrics → update documentation with measured reduction.
 
-### ETX Link Quality Tracking
-- **Window size**: 10 packets (circular buffer)
-- **EWMA smoothing**: α=0.3 (30% new, 70% history)
-- **Update frequency**: Every packet (continuous)
-- **Range**: 1.0 (perfect) to 10.0 (poor)
+### ETX Link Quality Tracking *(current status)*
+- Implementation: 10-packet circular buffer with α=0.3 EWMA smoothing for link ETX.
+- Outstanding work: Add loss/failure reporting and drive routing decisions with updated ETX values.
+- Post-task: Validate ETX responsiveness under induced packet loss and document results.
 
-**Validation**: Window fills to 10/10, EWMA smoothing active after 3+ samples, cost function integrates ETX values correctly.
+**Status note**: Success-only runs populate the window; repeat validation after adding failure handling and routing feedback.
+
+**Bench evidence:** Trickle run (`run2_gateway.csv`) – 1 HELLO TX, 0 forced suppressions, interval → 600 s, 28 packets received. Baseline run (`run3_gateway.csv`, Trickle disabled) – 30 packets, fixed 120 s cadence.
+
+---
+
+## Phase 4 Integration Roadmap
+
+Follow these phases in order; lock in the implementation and run spot tests before moving on.
+
+1. **Trickle → HELLO Integration**
+   - Implementation: Connect the Trickle timer callbacks to LoRaMesher’s HELLO emission so adaptive intervals actually gate broadcasts.
+   - Test: 15 min cold-start bench (`experiments/results/new_bench/cost_trickle/run2_gateway.csv`) produced 1 HELLO TX, 0 forced suppressions, final interval 600 s while still receiving 28 sensor packets; baseline fixed-interval run (`run3_gateway.csv`, `TRICKLE_ENABLED false`) delivered 30 packets.
+   - Status: ✅ Implementation + bench validation complete.
+
+2. **ETX Failure Reporting Loop**
+   - Implementation: Capture ACK/timeout results (or equivalent) for each transmission, feed failures into the sliding window, and log ETX changes.
+   - Test: Inject controlled packet loss (e.g., reduced TX power or deliberate interference) and verify ETX rises while recovery follows when link stabilises.
+
+3. **Cost-Based Re-routing & Gateway Load**
+   - Implementation: Increment gateway load counters, apply hysteresis thresholds, and issue route updates when the composite cost beats the incumbent path.
+   - Test: Construct a two-path scenario (e.g., router near/far) to ensure routes switch only when the superior cost persists and chatter is avoided.
+
+4. **Full Hardware Regression**
+   - Implementation: Reflash all three protocols, then run 60-minute data-collection sessions (`gateway_data_collection.py`) for flooding, hopcount, and cost_routing.
+   - Test: Confirm CSV logs include Trickle stats, queue/memory metrics, and updated ETX values; archive results under `experiments/results/`.
+
+5. **Analysis & Documentation Refresh**
+   - Implementation: Regenerate figures with the refreshed datasets, update README/CHANGELOG with measured improvements, and fold findings into thesis drafts.
+   - Test: Sanity-check plots/tables against the new CSVs and capture any regressions before declaring Phase 4 complete.
 
 ---
 
@@ -268,7 +294,7 @@ platformio run -e router -t upload
 platformio run -e sensor -t upload
 cd ../../utilities
 python gateway_data_collection.py --port /dev/cu.usbserial-0001 \
-  --protocol cost_trickle --run-number 1 --duration 60 --output-dir ../experiments/results/
+  --protocol cost_routing --run-number 1 --duration 60 --output-dir ../experiments/results/
 ```
 
 ---
@@ -290,7 +316,7 @@ cd utilities
 source ../venv/bin/activate
 python gateway_data_collection.py \
   --port /dev/cu.usbserial-0001 \
-  --protocol [flooding|hopcount|cost_trickle] \
+  --protocol [flooding|hopcount|cost_routing] \
   --run-number 1 \
   --duration 60 \
   --output-dir ../experiments/results/
@@ -366,6 +392,10 @@ cd firmware/[protocol_directory]
 platformio run -e [sensor|router|gateway]
 ```
 
+*Notes:*
+- `firmware/3_gateway_routing` depends on the vendored LoRaMesher copy in the repo root (`../../`) to access the HELLO scheduling callbacks.
+- `firmware/1_flooding` and `firmware/2_hopcount` continue to consume the upstream LoRaMesher repository so baseline behaviour matches the original library.
+
 ### Monitoring Serial Output
 ```bash
 platformio device monitor -b 115200
@@ -424,6 +454,7 @@ If you use this work in your research, please cite:
 
 ## Contact
 
-**Author**: Nyein Chan Win Naing  
-**Email**: st123843@ait.asia  
+**Author**: Nyein Chan Win Naing
+**Email**: st123843@ait.asia
 **Institution**: Asian Institute of Technology, Thailand
+

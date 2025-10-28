@@ -5,27 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [Phase 4] - 2025-10-27 - Trickle + ETX Enhancements ✅
+## [Phase 4 - In Progress] - 2025-10-27 - Trickle + ETX Enhancements
 
 ### Added
-- **Trickle Adaptive HELLO Scheduler** in `firmware/3_gateway_routing/`
-  - RFC 6206-inspired exponential backoff (60s → 600s)
-  - State machine: IDLE → ACTIVE → RESET
-  - Suppression mechanism (k=1)
-  - 90% HELLO overhead reduction (6 vs 60 per hour)
-  - Lines 162-324 in main.cpp
+- **Trickle Adaptive HELLO Scheduler integration** in `firmware/3_gateway_routing/` and `src/LoraMesher.*`
+  - RFC 6206-inspired state machine (IDLE → ACTIVE → RESET) with k=1 suppression, now controlling LoRaMesher HELLO cadence via callback hook.
+  - Guarantees at least one HELLO (boot) and forces a transmit after four consecutive suppressions to keep routes alive.
+  - Bench (run2) observed 1 HELLO TX, 0 forced suppressions, interval → 600 s with continued packet delivery; baseline (run3, Trickle disabled) logged 30 packets at fixed 120 s cadence.
+  - Added `setHelloSchedulerCallback`/`setHelloEventCallback` APIs so firmware can decide when HELLO packets transmit and collect suppression stats.
+  - Bench validation pending to confirm adaptive cadence and suppression ratios.
 
 - **ETX Sliding Window + EWMA Smoothing** in `firmware/3_gateway_routing/`
-  - 10-packet circular buffer for time-decayed tracking
-  - EWMA factor α=0.3 (30% new, 70% historical)
-  - Continuous updates every packet
-  - Range clamping [1.0, 10.0]
-  - Lines 678-733 in main.cpp
+  - 10-packet circular buffer with α=0.3 smoothing and range clamping [1.0, 10.0].
+  - Success updates wired; failure/timeout reporting + routing feedback remain TODO.
 
 ### Verified
-- All 3 protocols compile successfully (sensor, router, gateway environments)
-- Memory usage: 12% flash (401 KB), 6.6% RAM (21.6 KB)
-- No compilation errors or warnings
+- Builds succeed for sensor/router/gateway environments (PlatformIO).
+- No integration or hardware validation completed yet for Phase 4 features.
+
+### Changed
+- `firmware/3_gateway_routing` now references the vendored `LoRaMesher` library (../../) to use the callback-enabled build; flooding/hopcount still point to upstream LoRaMesher for baseline parity.
+
+### TODO
+- Capture before/after HELLO metrics with new Trickle-controlled scheduler.
+- Feed ETX + gateway load metrics into route selection with hysteresis safeguards.
+- Re-run experiments to regenerate duty-cycle and routing performance figures.
+- Track roadmap progress in README.md/AI_HANDOFF.md and record outcomes per phase.
 
 ---
 
@@ -37,14 +42,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Link quality tracking (RSSI, SNR, ETX per neighbor)
   - Exponential moving average for RSSI/SNR (alpha=0.3)
   - ETX calculation with default 1.5 for new links
-  - Gateway load balancing bias
-  - 15% hysteresis threshold to prevent route flapping
+  - Gateway load balancing bias (counters to integrate)
+  - 15% hysteresis threshold defined (activation pending routing integration)
 
-### Hardware Tested
-- 3-node testbed (Sensor BB94, Router 6674, Gateway D218)
-- Cost metrics calculated correctly
-- Link quality tracking working
-- Stable operation, no crashes
+### Status
+- Firmware compiles and logs cost metrics, but LoRaMesher still forwards by hop count.
+- Requires route re-evaluation logic + gateway load tracking before hardware validation can resume.
 
 ---
 
@@ -109,8 +112,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Thesis Week 1-3] - 2025-10-22 - HARDWARE TESTING & ANALYSIS COMPLETE
 
 ### Summary
-Completed all empirical data collection and analytical modeling **10 days ahead of schedule**. 
-Successfully conducted 9 test runs (3 protocols × 3 repetitions), generated scalability analysis 
+Completed all empirical data collection and analytical modeling **10 days ahead of schedule**.
+Successfully conducted 9 test runs (3 protocols × 3 repetitions), generated scalability analysis
 with breakpoint calculations, and produced 8 publication-quality figures for thesis.
 
 ### Week 1: Hardware Testing (Oct 21-22)
@@ -501,3 +504,4 @@ with breakpoint calculations, and produced 8 publication-quality figures for the
 - **Fixed**: Bug fixes
 - **Tested**: Hardware validation results
 - **Notes**: Important context or decisions
+

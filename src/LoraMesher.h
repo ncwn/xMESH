@@ -49,6 +49,9 @@ public:
         RFM95_MOD,
     };
 
+    typedef void (*HelloSchedulerCallback)(bool* shouldSend, uint32_t* waitMs, void* ctx);
+    typedef void (*HelloEventCallback)(bool consistent, void* ctx);
+
     /**
      * @brief LoRaMesher configuration
      *
@@ -518,6 +521,22 @@ public:
      */
     void removeSimulatorService() { simulatorService = nullptr; }
 
+    /**
+     * @brief Register a callback to control HELLO packet scheduling.
+     *
+     * @param callback Function invoked before each HELLO iteration. Can adjust whether to transmit and the wait time until the next iteration.
+     * @param context User-supplied context pointer forwarded to the callback.
+     */
+    void setHelloSchedulerCallback(HelloSchedulerCallback callback, void* context = nullptr);
+
+    /**
+     * @brief Register a callback invoked whenever a HELLO packet is processed.
+     *
+     * @param callback Function receiving a flag indicating whether the HELLO was consistent with current state.
+     * @param context User-supplied context pointer forwarded to the callback.
+     */
+    void setHelloEventCallback(HelloEventCallback callback, void* context = nullptr);
+
 #ifndef LM_GOD_MODE
 private:
 #endif
@@ -551,6 +570,12 @@ private:
      *
      */
     TaskHandle_t Hello_TaskHandle = nullptr;
+
+    HelloSchedulerCallback helloSchedulerCallback = nullptr;
+    void* helloSchedulerContext = nullptr;
+
+    HelloEventCallback helloEventCallback = nullptr;
+    void* helloEventContext = nullptr;
 
     /**
      * @brief Receive packets task handle. Every time a LoRa packet is detected it will create a packet,

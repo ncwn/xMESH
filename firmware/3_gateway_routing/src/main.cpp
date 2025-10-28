@@ -58,7 +58,8 @@
 #define TRICKLE_IMIN_MS     60000   // Minimum interval: 60 seconds
 #define TRICKLE_IMAX_MS     600000  // Maximum interval: 600 seconds (10 minutes)
 #define TRICKLE_K           1       // Redundancy constant (suppress if heard k HELLOs)
-#define TRICKLE_ENABLED     true    // Set false to disable Trickle (use fixed 120s)
+#define TRICKLE_ENABLED     false    // Set false to disable Trickle (use fixed 120s)
+#define TRICKLE_SUPPRESS_LIMIT 4     // Force a transmission after this many consecutive suppressions
 
 // Heltec V3 Custom SPI pins (required for proper operation)
 #define LORA_MOSI   10
@@ -173,6 +174,8 @@ private:
     bool enabled;               // Enable/disable Trickle
     uint32_t transmitCount;     // Total transmissions
     uint32_t suppressCount;     // Suppressed transmissions
+    uint8_t consecutiveSuppressions; // Suppressions in a row within current steady state
+    bool hasTransmitted;        // Tracks whether at least one HELLO has been sent since boot
     
     enum State {
         IDLE,
@@ -188,6 +191,7 @@ public:
         : I_min(imin), I_max(imax), I_current(imin), k(k_val),
           intervalStart(0), nextTransmit(0), consistentHeard(0),
           enabled(enable), transmitCount(0), suppressCount(0),
+          consecutiveSuppressions(0), hasTransmitted(false),
           state(IDLE) {}
     
     /**
@@ -216,6 +220,7 @@ public:
         nextTransmit = intervalStart + halfInterval + random(halfInterval);
         
         state = RESET;
+        consecutiveSuppressions = 0;
         Serial.printf("[Trickle] RESET - I=%.1fs, next TX in %.1fs\n", 
                      I_current/1000.0, (nextTransmit - millis())/1000.0);
     }
@@ -234,53 +239,73 @@ public:
         nextTransmit = intervalStart + halfInterval + random(halfInterval);
         
         state = ACTIVE;
+        consecutiveSuppressions = 0;
         Serial.printf("[Trickle] DOUBLE - I=%.1fs, next TX in %.1fs\n", 
                      I_current/1000.0, (nextTransmit - millis())/1000.0);
     }
     
     /**
-     * @brief Check if interval has expired
+     * @brief Compute scheduling decision for the current interval.
+     * @param shouldSend Output flag indicating whether to transmit in this iteration.
+     * @param waitMs Output delay (milliseconds) until the next scheduling check.
      */
-    bool intervalExpired() {
-        if (!enabled) return true;  // Act like normal timer if disabled
-        return (millis() - intervalStart) >= I_current;
-    }
-    
-    /**
-     * @brief Check if should transmit now
-     * @return true if transmission should occur
-     */
-    bool shouldTransmit() {
-        if (!enabled) return true;  // Always transmit if Trickle disabled
-        
+    void getScheduleDecision(bool& shouldSend, uint32_t& waitMs) {
+        if (!enabled) {
+            shouldSend = true;
+            waitMs = TRICKLE_IMIN_MS;
+            return;
+        }
+
         uint32_t now = millis();
-        
-        // Check if interval expired - start new interval
-        if (intervalExpired()) {
+
+        if (state == IDLE) {
+            start();
+            now = millis();
+        }
+
+        if ((now - intervalStart) >= I_current) {
             doubleInterval();
-            return false;  // Don't transmit immediately after doubling
+            now = millis();
         }
-        
-        // Check if reached transmission point (only once per interval!)
-        if (now >= nextTransmit && state != IDLE) {
-            // Mark transmission point as passed to avoid repeated triggers
-            nextTransmit = UINT32_MAX;  // Set to max value so this triggers only once
-            
-            // Check suppression: if heard k consistent messages, suppress
-            if (consistentHeard >= k) {
+
+        shouldSend = false;
+
+        if (nextTransmit != UINT32_MAX && now >= nextTransmit) {
+            bool allowSuppression = hasTransmitted && (consecutiveSuppressions < TRICKLE_SUPPRESS_LIMIT);
+
+            if (consistentHeard >= k && allowSuppression) {
                 suppressCount++;
-                Serial.printf("[Trickle] SUPPRESS - heard %d consistent HELLOs\n", 
-                             consistentHeard);
-                return false;
+                consecutiveSuppressions++;
+                Serial.printf("[Trickle] SUPPRESS - heard %d consistent HELLOs\n", consistentHeard);
+            } else {
+                transmitCount++;
+                hasTransmitted = true;
+                consecutiveSuppressions = 0;
+                shouldSend = true;
+                Serial.printf("[Trickle] TRANSMIT - count=%u, interval=%.1fs\n", transmitCount, I_current/1000.0);
             }
-            
-            transmitCount++;
-            Serial.printf("[Trickle] TRANSMIT - count=%u, interval=%.1fs\n", 
-                         transmitCount, I_current/1000.0);
-            return true;
+
+            nextTransmit = intervalStart + I_current;
         }
-        
-        return false;
+
+        uint32_t targetTime = nextTransmit;
+        if (targetTime <= now || targetTime == UINT32_MAX) {
+            targetTime = intervalStart + I_current;
+        }
+
+        if (targetTime <= now) {
+            targetTime = now + 10;
+        }
+
+        waitMs = targetTime - now;
+
+        if (waitMs > I_max) {
+            waitMs = I_max;
+        }
+
+        if (waitMs == 0) {
+            waitMs = 1;
+        }
     }
     
     /**
@@ -339,6 +364,37 @@ public:
 
 // Global Trickle timer instance
 TrickleTimer trickleTimer;
+
+void trickleHelloSchedulerCallback(bool* shouldSend, uint32_t* waitMs, void* ctx) {
+    if (!shouldSend || !waitMs) {
+        return;
+    }
+
+    TrickleTimer* timer = static_cast<TrickleTimer*>(ctx);
+    if (!timer) {
+        return;
+    }
+
+    bool decision = true;
+    uint32_t delay = TRICKLE_IMIN_MS;
+    timer->getScheduleDecision(decision, delay);
+
+    *shouldSend = decision;
+    *waitMs = delay;
+}
+
+void trickleHelloEventCallback(bool consistent, void* ctx) {
+    TrickleTimer* timer = static_cast<TrickleTimer*>(ctx);
+    if (!timer || !timer->isEnabled()) {
+        return;
+    }
+
+    if (consistent) {
+        timer->heardConsistent();
+    } else {
+        timer->heardInconsistent();
+    }
+}
 
 // ============================================================================
 // Week 1: Network Monitoring Structures (for analytical model)
@@ -948,6 +1004,10 @@ void setupLoraMesher() {
     // Initialize LoRaMesher
     radio.begin(config);
 
+    // Hook Trickle scheduler into LoRaMesher HELLO task
+    radio.setHelloSchedulerCallback(trickleHelloSchedulerCallback, &trickleTimer);
+    radio.setHelloEventCallback(trickleHelloEventCallback, &trickleTimer);
+
     // Create and register receive task
     createReceiveMessages();
     radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
@@ -982,11 +1042,10 @@ void setupLoraMesher() {
     Serial.println("========================================");
     Serial.println("\nWaiting for network discovery...");
     if (trickleTimer.isEnabled()) {
-        Serial.println("NOTE: Trickle timer implemented - adaptive HELLO intervals");
+        Serial.println("NOTE: Trickle timer integrated with LoRaMesher HELLO scheduling");
         Serial.printf("      Initial: %.1fs, Max: %.1fs\n", 
                      TRICKLE_IMIN_MS/1000.0, TRICKLE_IMAX_MS/1000.0);
-        Serial.println("      Full integration requires LoRaMesher library modification");
-        Serial.println("      Current: Independent timer for overhead tracking");
+        Serial.println("      LoRaMesher HELLO cadence now governed by Trickle decisions");
     } else {
         Serial.println("HELLO packets will be sent every 120 seconds");
     }
@@ -1127,14 +1186,6 @@ void loop() {
                      millis()/1000, radio.getLocalAddress(), NODE_ROLE_STR, millis()/1000);
         Serial.printf("TX Count: %lu | RX Count: %lu | Routing Table Size: %d\n",
                      txCount, rxCount, radio.routingTableSize());
-    }
-    
-    // Check Trickle timer periodically (not every loop iteration!)
-    // Trickle just tracks timing, doesn't actually send HELLOs (that's LoRaMesher's job)
-    static uint32_t lastTrickleCheck = 0;
-    if (trickleTimer.isEnabled() && (millis() - lastTrickleCheck > 1000)) {
-        lastTrickleCheck = millis();
-        trickleTimer.shouldTransmit();  // Check once per second, not every 100ms
     }
     
     // Evaluate routes based on cost function every 10 seconds

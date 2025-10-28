@@ -6,6 +6,16 @@
 
 LoraMesher::LoraMesher() {}
 
+void LoraMesher::setHelloSchedulerCallback(HelloSchedulerCallback callback, void* context) {
+    helloSchedulerCallback = callback;
+    helloSchedulerContext = context;
+}
+
+void LoraMesher::setHelloEventCallback(HelloEventCallback callback, void* context) {
+    helloEventCallback = callback;
+    helloEventContext = context;
+}
+
 void LoraMesher::begin(LoraMesherConfig config) {
     ESP_LOGV(LM_TAG, "Initializing LoraMesher v%s", LM_VERSION);
 
@@ -610,41 +620,53 @@ void LoraMesher::sendHelloPacket() {
     vTaskDelay(2000 / portTICK_PERIOD_MS);
 
     for (;;) {
-        ESP_LOGV(LM_TAG, "Creating Routing Packet");
-        ESP_LOGV(LM_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
-        ESP_LOGV(LM_TAG, "Free heap: %d", getFreeHeap());
+        bool shouldSend = true;
+        uint32_t waitMs = HELLO_PACKETS_DELAY * 1000;
 
-        incSentHelloPackets();
-
-        NetworkNode* nodes = RoutingTableService::getAllNetworkNodes();
-        size_t numOfNodes = RoutingTableService::routingTableSize();
-
-        size_t numPackets = (numOfNodes + maxNodesPerPacket - 1) / maxNodesPerPacket;
-        numPackets = (numPackets == 0) ? 1 : numPackets;
-
-        for (size_t i = 0; i < numPackets; ++i) {
-            size_t startIndex = i * maxNodesPerPacket;
-            size_t endIndex = startIndex + maxNodesPerPacket;
-            if (endIndex > numOfNodes) {
-                endIndex = numOfNodes;
-            }
-
-            size_t nodesInThisPacket = endIndex - startIndex;
-
-            // Create and send the packet
-            RoutePacket* tx = PacketService::createRoutingPacket(
-                getLocalAddress(), &nodes[startIndex], nodesInThisPacket, RoleService::getRole()
-            );
-
-            setPackedForSend(reinterpret_cast<Packet<uint8_t>*>(tx), DEFAULT_PRIORITY + 1);
+        if (helloSchedulerCallback) {
+            helloSchedulerCallback(&shouldSend, &waitMs, helloSchedulerContext);
         }
 
-        // Delete the nodes array
-        if (numOfNodes > 0)
-            delete[] nodes;
+        if (shouldSend) {
+            ESP_LOGV(LM_TAG, "Creating Routing Packet");
+            ESP_LOGV(LM_TAG, "Stack space unused after entering the task: %d", uxTaskGetStackHighWaterMark(NULL));
+            ESP_LOGV(LM_TAG, "Free heap: %d", getFreeHeap());
 
-        // Wait for HELLO_PACKETS_DELAY seconds to send the next hello packet
-        vTaskDelay(HELLO_PACKETS_DELAY * 1000 / portTICK_PERIOD_MS);
+            incSentHelloPackets();
+
+            NetworkNode* nodes = RoutingTableService::getAllNetworkNodes();
+            size_t numOfNodes = RoutingTableService::routingTableSize();
+
+            size_t numPackets = (numOfNodes + maxNodesPerPacket - 1) / maxNodesPerPacket;
+            numPackets = (numPackets == 0) ? 1 : numPackets;
+
+            for (size_t i = 0; i < numPackets; ++i) {
+                size_t startIndex = i * maxNodesPerPacket;
+                size_t endIndex = startIndex + maxNodesPerPacket;
+                if (endIndex > numOfNodes) {
+                    endIndex = numOfNodes;
+                }
+
+                size_t nodesInThisPacket = endIndex - startIndex;
+
+                // Create and send the packet
+                RoutePacket* tx = PacketService::createRoutingPacket(
+                    getLocalAddress(), &nodes[startIndex], nodesInThisPacket, RoleService::getRole()
+                );
+
+                setPackedForSend(reinterpret_cast<Packet<uint8_t>*>(tx), DEFAULT_PRIORITY + 1);
+            }
+
+            // Delete the nodes array
+            if (numOfNodes > 0)
+                delete[] nodes;
+        }
+
+        if (waitMs == 0) {
+            waitMs = 1;
+        }
+
+        vTaskDelay(waitMs / portTICK_PERIOD_MS);
     }
 }
 
@@ -687,6 +709,11 @@ void LoraMesher::processPackets() {
                     incRecHelloPackets();
 
                     RoutingTableService::processRoute(reinterpret_cast<RoutePacket*>(rx->packet), rx->snr);
+
+                    if (helloEventCallback) {
+                        helloEventCallback(true, helloEventContext);
+                    }
+
                     PacketQueueService::deleteQueuePacketAndPacket(rx);
                 }
                 else if (PacketService::isDataPacket(type))
