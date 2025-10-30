@@ -177,9 +177,9 @@ LoRa-Mesh-Network/
 │
 ├── src/                           # LoRaMesher library source
 ├── docs/                          # Additional documentation + diagrams
-├── proposal_docs/                 # Thesis proposal, notes, and diagrams
+├── proposal_docs/                 # Thesis proposal, notes, and diagrams (local only, gitignored)
 ├── README.md                      # 🌟 This file - main documentation
-├── AI_HANDOFF.md                  # Context for AI assistants
+├── AI_HANDOFF.md                  # Local AI handoff notes (gitignored)
 └── CHANGELOG.md                   # Version history
 ```
 
@@ -187,13 +187,13 @@ LoRa-Mesh-Network/
 - **`utilities/`** – Real-time data collection during tests (captures serial port → CSV).
 - **`analysis/`** – Post-test data processing (CSV → figures, statistics, modeling).
 - **`experiments/`** – Parameter configs plus archived CSV datasets/figures from runs.
-- **`proposal_docs/`** – Thesis proposal draft, presentation notes, Mermaid diagrams.
+- **`proposal_docs/`** – Thesis proposal draft, presentation notes, Mermaid diagrams (local only, not committed).
 ---
 
 **📖 Key Documentation:**
 - [**CHANGELOG.md**](CHANGELOG.md) – Version history & milestone notes.
-- [**AI_HANDOFF.md**](AI_HANDOFF.md) – Context for collaborators and next actions.
-- [**proposal_docs/**](proposal_docs/) – Thesis proposal, presentation notes, and diagram sources.
+- **AI_HANDOFF.md** – Local handoff context for AI collaborators (directory is gitignored).
+- [**proposal_docs/**](proposal_docs/) – Thesis proposal, presentation notes, and diagram sources (kept local; repo ignores this directory).
 
 ---
 
