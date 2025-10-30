@@ -58,8 +58,9 @@
 #define TRICKLE_IMIN_MS     60000   // Minimum interval: 60 seconds
 #define TRICKLE_IMAX_MS     600000  // Maximum interval: 600 seconds (10 minutes)
 #define TRICKLE_K           1       // Redundancy constant (suppress if heard k HELLOs)
-#define TRICKLE_ENABLED     false    // Set false to disable Trickle (use fixed 120s)
+#define TRICKLE_ENABLED     true    // Set false to disable Trickle (use fixed 120s)
 #define TRICKLE_SUPPRESS_LIMIT 4     // Force a transmission after this many consecutive suppressions
+#define TRICKLE_MAX_SILENCE_MS 300000 // Always transmit if no HELLO sent in this period
 
 // Heltec V3 Custom SPI pins (required for proper operation)
 #define LORA_MOSI   10
@@ -119,10 +120,14 @@ struct LinkMetrics {
     uint32_t totalTxAttempts;   // Total transmission attempts (for statistics)
     uint32_t totalTxSuccess;    // Total successful transmissions
     uint32_t lastUpdate;        // Timestamp of last update
-    
+    bool hasSeqHistory;         // Whether we've seen at least one sequence number
+    uint32_t lastSeqNumber;     // Last sequence number observed
+    uint32_t lastSeqTimestamp;  // Timestamp when last sequence was recorded
+
     LinkMetrics() : address(0), rssi(-120), snr(-20), etx(ETX_DEFAULT), 
                     windowIndex(0), windowFilled(0),
-                    totalTxAttempts(0), totalTxSuccess(0), lastUpdate(0) {
+                    totalTxAttempts(0), totalTxSuccess(0), lastUpdate(0),
+                    hasSeqHistory(false), lastSeqNumber(0), lastSeqTimestamp(0) {
         // Initialize sliding window with default (assume 67% success = ETX 1.5)
         for (int i = 0; i < ETX_WINDOW_SIZE; i++) {
             txWindow[i] = (i % 3 != 0);  // 2 success, 1 failure pattern
@@ -142,6 +147,22 @@ struct GatewayLoad {
 };
 GatewayLoad gatewayLoads[5];  // Support up to 5 gateways
 uint8_t numGateways = 0;
+
+void resetLinkMetricState(LinkMetrics* link) {
+    if (!link) return;
+
+    for (int i = 0; i < ETX_WINDOW_SIZE; i++) {
+        link->txWindow[i] = (i % 3 != 0);
+    }
+    link->windowIndex = 0;
+    link->windowFilled = 0;
+    link->totalTxAttempts = 0;
+    link->totalTxSuccess = 0;
+    link->etx = ETX_DEFAULT;
+    link->hasSeqHistory = false;
+    link->lastSeqNumber = 0;
+    link->lastSeqTimestamp = 0;
+}
 
 // ============================================================================
 // Trickle Timer for Adaptive HELLO Packet Scheduling
@@ -170,12 +191,13 @@ private:
     uint32_t intervalStart;     // Start time of current interval
     uint32_t nextTransmit;      // Time of next transmission
     uint8_t consistentHeard;    // Count of consistent messages heard
-    
+
     bool enabled;               // Enable/disable Trickle
     uint32_t transmitCount;     // Total transmissions
     uint32_t suppressCount;     // Suppressed transmissions
     uint8_t consecutiveSuppressions; // Suppressions in a row within current steady state
     bool hasTransmitted;        // Tracks whether at least one HELLO has been sent since boot
+    uint32_t lastTransmit;      // Timestamp of last HELLO actually transmitted
     
     enum State {
         IDLE,
@@ -192,6 +214,7 @@ public:
           intervalStart(0), nextTransmit(0), consistentHeard(0),
           enabled(enable), transmitCount(0), suppressCount(0),
           consecutiveSuppressions(0), hasTransmitted(false),
+          lastTransmit(0),
           state(IDLE) {}
     
     /**
@@ -221,6 +244,7 @@ public:
         
         state = RESET;
         consecutiveSuppressions = 0;
+        lastTransmit = 0;
         Serial.printf("[Trickle] RESET - I=%.1fs, next TX in %.1fs\n", 
                      I_current/1000.0, (nextTransmit - millis())/1000.0);
     }
@@ -305,6 +329,17 @@ public:
 
         if (waitMs == 0) {
             waitMs = 1;
+        }
+
+        // Fail-safe: ensure HELLO is transmitted periodically even when suppressed
+        if (hasTransmitted && !shouldSend && lastTransmit != 0 && (now - lastTransmit) >= TRICKLE_MAX_SILENCE_MS) {
+            shouldSend = true;
+            consecutiveSuppressions = 0;
+            Serial.printf("[Trickle] MAX-SILENCE - forcing HELLO after %.1fs\n", (now - lastTransmit) / 1000.0);
+        }
+
+        if (shouldSend) {
+            lastTransmit = now;
         }
     }
     
@@ -626,9 +661,12 @@ LinkMetrics* getLinkMetrics(uint16_t address) {
     
     // Create new entry if space available
     if (numTrackedLinks < MAX_TRACKED_LINKS) {
-        linkMetrics[numTrackedLinks].address = address;
-        linkMetrics[numTrackedLinks].lastUpdate = millis();
-        return &linkMetrics[numTrackedLinks++];
+        LinkMetrics* link = &linkMetrics[numTrackedLinks];
+        resetLinkMetricState(link);
+        link->address = address;
+        link->lastUpdate = millis();
+        numTrackedLinks++;
+        return link;
     }
     
     // Replace oldest entry if full
@@ -641,6 +679,7 @@ LinkMetrics* getLinkMetrics(uint16_t address) {
         }
     }
     linkMetrics[oldestIdx].address = address;
+    resetLinkMetricState(&linkMetrics[oldestIdx]);
     linkMetrics[oldestIdx].lastUpdate = millis();
     return &linkMetrics[oldestIdx];
 }
@@ -684,6 +723,7 @@ float calculateRouteCost(uint8_t hops, uint16_t nextHop, uint16_t destAddr) {
 }
 
 // Forward declaration for ETX update function
+void applyEtxObservation(LinkMetrics* link, uint16_t address, bool success);
 void updateETX(uint16_t address, bool success);
 
 /**
@@ -692,7 +732,7 @@ void updateETX(uint16_t address, bool success);
  * @param rssi Received RSSI
  * @param snr Received SNR
  */
-void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr) {
+void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, uint32_t seqNum) {
     LinkMetrics* link = getLinkMetrics(address);
     
     // Update RSSI/SNR with exponential moving average (alpha = 0.3)
@@ -707,9 +747,62 @@ void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr) {
     }
     
     link->lastUpdate = millis();
-    
-    // Update ETX: Successful packet reception = successful transmission from sender
-    updateETX(address, true);
+    link->lastSeqTimestamp = link->lastUpdate;
+
+    auto registerFailure = [&](uint8_t count) {
+        for (uint8_t i = 0; i < count; i++) {
+            applyEtxObservation(link, address, false);
+        }
+    };
+
+    auto registerSuccess = [&]() {
+        applyEtxObservation(link, address, true);
+    };
+
+    if (!link->hasSeqHistory) {
+        registerSuccess();
+        link->hasSeqHistory = true;
+        link->lastSeqNumber = seqNum;
+    } else {
+        uint32_t expected = link->lastSeqNumber + 1;
+
+        if (seqNum == link->lastSeqNumber) {
+            // Duplicate packet; treat as success but do not update ETX again to avoid skew
+            Serial.printf("[ETX] Duplicate seq %lu from %04X ignored\n", (unsigned long)seqNum, address);
+        } else if (seqNum == expected) {
+            registerSuccess();
+            link->lastSeqNumber = seqNum;
+        } else if (seqNum > expected) {
+            uint32_t gap = seqNum - expected;
+            uint8_t missed = (gap > ETX_WINDOW_SIZE) ? ETX_WINDOW_SIZE : (uint8_t)gap;
+            registerFailure(missed);
+            registerSuccess();
+            link->lastSeqNumber = seqNum;
+            if (gap > ETX_WINDOW_SIZE) {
+                Serial.printf("[ETX] Large gap (%lu) detected from %04X, capped failures to window size\n",
+                              (unsigned long)gap, address);
+            }
+        } else { // seqNum < lastSeqNumber => potential wrap or reset
+            bool probableReset = (link->lastSeqNumber > 100 && seqNum < 10) || seqNum == 0;
+            if (probableReset) {
+                Serial.printf("[ETX] Sequence reset detected for %04X (last=%lu, new=%lu) - resetting ETX window\n",
+                              address, (unsigned long)link->lastSeqNumber, (unsigned long)seqNum);
+                resetLinkMetricState(link);
+                link->address = address;
+                link->lastUpdate = millis();
+                link->lastSeqTimestamp = link->lastUpdate;
+                registerSuccess();
+                link->hasSeqHistory = true;
+                link->lastSeqNumber = seqNum;
+            } else {
+                // Out-of-order but not a reset – register as success to avoid penalizing
+                Serial.printf("[ETX] Out-of-order seq from %04X (last=%lu, new=%lu)\n", address,
+                              (unsigned long)link->lastSeqNumber, (unsigned long)seqNum);
+                registerSuccess();
+                link->lastSeqNumber = seqNum;
+            }
+        }
+    }
     
     Serial.printf("Link %04X: RSSI=%d dBm, SNR=%d dB, ETX=%.2f\n", 
                  address, link->rssi, link->snr, link->etx);
@@ -731,55 +824,52 @@ void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr) {
  * - EWMA smoothing: Reduces jitter from single packet losses
  * - Continuous updates: ETX updates every packet, not every N packets
  */
-void updateETX(uint16_t address, bool success) {
-    LinkMetrics* link = getLinkMetrics(address);
-    
-    // Add transmission result to sliding window (circular buffer)
+void applyEtxObservation(LinkMetrics* link, uint16_t address, bool success) {
+    if (!link) return;
+
     link->txWindow[link->windowIndex] = success;
     link->windowIndex = (link->windowIndex + 1) % ETX_WINDOW_SIZE;
-    
-    // Track window fill status (for initial packets)
+
     if (link->windowFilled < ETX_WINDOW_SIZE) {
         link->windowFilled++;
     }
-    
-    // Update total statistics (for monitoring)
+
     link->totalTxAttempts++;
     if (success) link->totalTxSuccess++;
-    
-    // Calculate delivery ratio from sliding window
+
     uint8_t successCount = 0;
     for (uint8_t i = 0; i < link->windowFilled; i++) {
         if (link->txWindow[i]) successCount++;
     }
-    
+
     float deliveryRatio = (float)successCount / link->windowFilled;
-    
-    // Calculate instantaneous ETX
+
     float instantETX;
-    if (deliveryRatio > 0.01) {  // Avoid division by very small numbers
-        instantETX = 1.0 / deliveryRatio;
+    if (deliveryRatio > 0.01f) {
+        instantETX = 1.0f / deliveryRatio;
     } else {
-        instantETX = 100.0;  // Essentially unreachable
+        instantETX = 100.0f;
     }
-    
-    // Apply EWMA smoothing (only after window has some data)
-    if (link->windowFilled >= 3) {  // Wait for at least 3 samples
-        link->etx = ETX_ALPHA * instantETX + (1.0 - ETX_ALPHA) * link->etx;
+
+    if (link->windowFilled >= 3) {
+        link->etx = ETX_ALPHA * instantETX + (1.0f - ETX_ALPHA) * link->etx;
     } else {
-        link->etx = instantETX;  // Bootstrap phase: use instant value
+        link->etx = instantETX;
     }
-    
-    // Clamp ETX to reasonable range [1.0, 10.0]
-    if (link->etx < 1.0) link->etx = 1.0;
-    if (link->etx > 10.0) link->etx = 10.0;
-    
-    // Periodic logging (every 10th packet) for production use
+
+    if (link->etx < 1.0f) link->etx = 1.0f;
+    if (link->etx > 10.0f) link->etx = 10.0f;
+
     if (link->totalTxAttempts % 10 == 0) {
         Serial.printf("ETX updated for %04X: %.2f (window: %d/%d, instant: %.2f, lifetime: %.1f%%)\n",
-                     address, link->etx, successCount, link->windowFilled, instantETX,
-                     (float)link->totalTxSuccess / link->totalTxAttempts * 100);
+                      address, link->etx, successCount, link->windowFilled, instantETX,
+                      (float)link->totalTxSuccess / link->totalTxAttempts * 100);
     }
+}
+
+void updateETX(uint16_t address, bool success) {
+    LinkMetrics* link = getLinkMetrics(address);
+    applyEtxObservation(link, address, success);
 }
 
 /**
@@ -893,6 +983,7 @@ void processReceivedPackets(void*) {
             }
 
             SensorData* data = packet->payload;
+            uint32_t seqNum = data->seqNum;
 
             // Update RX counter and display
             rxCount++;
@@ -907,7 +998,7 @@ void processReceivedPackets(void*) {
                 // Typical: RSSI = -120 + SNR * 3 for LoRa
                 int16_t estimatedRSSI = -120 + (snr * 3);
                 
-                updateLinkMetrics(packet->src, estimatedRSSI, snr);
+                updateLinkMetrics(packet->src, estimatedRSSI, snr, seqNum);
                 
                 Serial.printf("Link quality: SNR=%d dB, Est.RSSI=%d dBm\n", 
                              snr, estimatedRSSI);

@@ -59,6 +59,8 @@ class GatewayMonitor:
             'trickle_stats': re.compile(r'\[Trickle\] TX=(\d+), Suppressed=(\d+), Efficiency=([\d.]+)%, I=([\d.]+)s'),
             'trickle_transmit': re.compile(r'\[Trickle\] TRANSMIT - count=(\d+), interval=([\d.]+)s'),
             'trickle_double': re.compile(r'\[Trickle\] DOUBLE - I=([\d.]+)s'),
+            'etx_update': re.compile(r'ETX updated for ([A-F0-9]+): ([\d.]+) \(window: (\d+)/(\d+), instant: ([\d.]+), lifetime: ([\d.]+)%\)'),
+            'etx_notice': re.compile(r'\[ETX\] (.+)'),
         }
     
     def connect(self):
@@ -99,6 +101,13 @@ class GatewayMonitor:
                 'trickle_suppressed',
                 'trickle_efficiency_pct',
                 'trickle_interval_s',
+                'etx_address',
+                'etx_value',
+                'etx_window_success',
+                'etx_window_size',
+                'etx_instant',
+                'etx_lifetime_success_pct',
+                'etx_note',
                 'raw_line'
             ])
             
@@ -234,6 +243,33 @@ class GatewayMonitor:
                         }
                         self._write_row(trickle_data, line)
                     
+                    # Parse ETX update lines
+                    match = self.patterns['etx_update'].search(line)
+                    if match:
+                        etx_data = {
+                            'timestamp': timestamp,
+                            'event_type': 'etx_update',
+                            'etx_address': match.group(1),
+                            'etx_value': float(match.group(2)),
+                            'etx_window_success': int(match.group(3)),
+                            'etx_window_size': int(match.group(4)),
+                            'etx_instant': float(match.group(5)),
+                            'etx_lifetime_success_pct': float(match.group(6))
+                        }
+                        self._write_row(etx_data, line)
+                        continue
+
+                    # Parse ETX notices (duplicate, reset, etc.)
+                    match = self.patterns['etx_notice'].search(line)
+                    if match:
+                        etx_notice = {
+                            'timestamp': timestamp,
+                            'event_type': 'etx_notice',
+                            'etx_note': match.group(1)
+                        }
+                        self._write_row(etx_notice, line)
+                        continue
+                    
                     # Parse received packets
                     match = self.patterns['gateway_packet'].search(line)
                     if not match:
@@ -298,6 +334,13 @@ class GatewayMonitor:
             data.get('trickle_suppressed', ''),
             data.get('trickle_efficiency_pct', ''),
             data.get('trickle_interval_s', ''),
+            data.get('etx_address', ''),
+            data.get('etx_value', ''),
+            data.get('etx_window_success', ''),
+            data.get('etx_window_size', ''),
+            data.get('etx_instant', ''),
+            data.get('etx_lifetime_success_pct', ''),
+            data.get('etx_note', ''),
             raw_line
         ])
         self.csv_file.flush()
@@ -350,7 +393,7 @@ Example:
     parser.add_argument('--port', required=True,
                        help='Serial port for gateway node (D218)')
     parser.add_argument('--protocol', required=True,
-                       choices=['flooding', 'hopcount', 'cost_routing', 'cost_trickle'],
+                       choices=['flooding', 'hopcount', 'cost_routing', 'cost_trickle', 'seq-aware-etx'],
                        help='Protocol being tested')
     parser.add_argument('--run-number', type=int, required=True,
                        help='Run number (1, 2, or 3)')

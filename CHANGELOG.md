@@ -11,7 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Trickle Adaptive HELLO Scheduler integration** in `firmware/3_gateway_routing/` and `src/LoraMesher.*`
   - RFC 6206-inspired state machine (IDLE → ACTIVE → RESET) with k=1 suppression, now controlling LoRaMesher HELLO cadence via callback hook.
   - Guarantees at least one HELLO (boot) and forces a transmit after four consecutive suppressions to keep routes alive.
-  - Bench (run2) observed 1 HELLO TX, 0 forced suppressions, interval → 600 s with continued packet delivery; baseline (run3, Trickle disabled) logged 30 packets at fixed 120 s cadence.
+  - Safety timer forces a HELLO every ≤5 minutes even when consistent neighbours are heard, so reset nodes rediscover gateways automatically.
+  - Bench (run2) observed 1 HELLO TX, 0 forced suppressions, interval → 600 s with continued packet delivery; baseline (run3, Trickle disabled) logged 30 packets at fixed 120 s cadence; seq-aware ETX run captured ETX reacting to induced losses.
   - Added `setHelloSchedulerCallback`/`setHelloEventCallback` APIs so firmware can decide when HELLO packets transmit and collect suppression stats.
   - Bench validation pending to confirm adaptive cadence and suppression ratios.
 
@@ -504,4 +505,3 @@ with breakpoint calculations, and produced 8 publication-quality figures for the
 - **Fixed**: Bug fixes
 - **Tested**: Hardware validation results
 - **Notes**: Important context or decisions
-

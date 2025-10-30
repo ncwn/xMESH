@@ -35,7 +35,7 @@ This project implements three LoRa mesh networking protocols with progressive en
 ### Trickle Adaptive HELLO Scheduler *(bench validation pending)*
 - **LoRaMesher integration**: HELLO task now consults Trickle callbacks for transmission permission and per-interval delays.
 - **Scheduling logic**: RFC 6206-style backoff (60s → 600s) with suppression counters and k=1 redundancy.
-- **Fairness safeguards**: First HELLO is always transmitted, and suppression is capped to avoid starving neighbors (forces a HELLO after 4 consecutive suppressions).
+- **Fairness safeguards**: First HELLO is always transmitted, suppression streaks are capped, and a 5-minute safety timer guarantees a HELLO even if consistent neighbours keep the timer suppressed.
 - **Next steps**: Run bench test to capture HELLO cadence vs baseline and document suppression/interval metrics.
 
 ### Enhanced ETX Metric *(routing feedback TODO)*
@@ -211,7 +211,7 @@ LoRa-Mesh-Network/
 
 **Status note**: Success-only runs populate the window; repeat validation after adding failure handling and routing feedback.
 
-**Bench evidence:** Trickle run (`run2_gateway.csv`) – 1 HELLO TX, 0 forced suppressions, interval → 600 s, 28 packets received. Baseline run (`run3_gateway.csv`, Trickle disabled) – 30 packets, fixed 120 s cadence.
+**Bench evidence:** Trickle run (`run2_gateway.csv`) – 1 HELLO TX, 0 forced suppressions, interval → 600 s, 28 packets received. Baseline run (`run3_gateway.csv`, Trickle disabled) – 30 packets, fixed 120 s cadence. Safety timer + ETX loss logging validated in `seq-aware-etx/run1_gateway.csv` (forced loss window → ETX 1.15, automatic HELLO refresh every ≤5 min).
 
 ---
 
@@ -308,6 +308,7 @@ The `gateway_data_collection.py` script automates data collection from the gatew
 - Duty-cycle tracking (1% ETSI compliance)
 - Memory and queue statistics
 - Trickle metrics (TX count, suppression, interval)
+- ETX updates + loss notices (address, window fill, instantaneous ETX) for seq-aware testing
 - CSV output for analysis
 
 **Usage:**
@@ -316,10 +317,18 @@ cd utilities
 source ../venv/bin/activate
 python gateway_data_collection.py \
   --port /dev/cu.usbserial-0001 \
-  --protocol [flooding|hopcount|cost_routing] \
+  --protocol [flooding|hopcount|cost_routing|cost_trickle|seq-aware-etx] \
   --run-number 1 \
   --duration 60 \
   --output-dir ../experiments/results/
+
+# Example (seq-aware ETX bench)
+python gateway_data_collection.py \
+  --port /dev/cu.usbserial-0001 \
+  --protocol seq-aware-etx \
+  --run-number 1 \
+  --duration 15 \
+  --output-dir ../experiments/results/new_bench
 ```
 
 **Output:** CSV file with columns for timestamp, event type, duty-cycle, memory, packet data, routing table size, and Trickle statistics.
@@ -457,4 +466,3 @@ If you use this work in your research, please cite:
 **Author**: Nyein Chan Win Naing
 **Email**: st123843@ait.asia
 **Institution**: Asian Institute of Technology, Thailand
-
