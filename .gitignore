@@ -1,0 +1,157 @@
+# Research Proposal Documents (private/confidential)
+proposal_docs/
+
+# Assistant Files (internal development, not for public repo)
+CLAUDE.md
+.context/
+.claude/
+DOCUMENTATION_SYNC_STATUS.md
+.backups*/
+.backup*/
+
+# AI Tool Files
+*.ai
+*.cursor
+.cursor/
+.aider*
+.copilot/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Build Files
+.pio/
+.pioenvs/
+.piolibdeps/
+.clang_complete
+.gcc-flags.json
+build/
+*.bin
+*.elf
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Raspberry Pi Data
+raspberry_pi/*.db
+raspberry_pi/*.sqlite
+raspberry_pi/*.log
+raspberry_pi/data/
+
+# Experiment Results (keep structure, ignore large data files)
+experiments/results/*.csv
+experiments/results/*.json
+experiments/results/*.db
+experiments/analysis/*.png
+experiments/analysis/*.pdf
+
+# Temporary Files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*~
+
+# Documentation Build Files
+docs/_build/
+docs/.doctrees/
+*.pdf
+
+# ESP32 Specific
+*.svd
+esp32.svd
+
+# Serial Monitor Logs
+*.serial
+serial_*.txt
+
+# Node Configuration (if contains secrets)
+*/config/secrets.h
+*/config/wifi_credentials.h
+
+# Coverage Reports
+coverage/
+*.lcov
+htmlcov/
+
+# Test Results
+test_results/
+*.test
+
+# Core Dumps
+core
+core.*
+*.stackdump
+
+# MQTT Configuration (may contain credentials)
+mqtt_config.json
+mqtt_credentials.yaml
+
+# Database Files (except schema)
+*.sqlite3
+*.db
+!schema.sql
+
+# Log Files
+*.log
+logs/
+*.log.*
+
+# Backup Files
+backup/
+*.backup
+*.bkp
+
+# Cache
+.cache/
+*.cache
+
+# Private Keys and Certificates (if any)
+*.pem
+*.key
+*.crt
+*.cer
+*.pfx
+*.p12
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Archive Files (usually backups)
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Lock Files (keep package-lock.json if needed)
+*.lock
+!package-lock.json
+!yarn.lock
