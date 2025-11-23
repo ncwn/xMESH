@@ -1,0 +1,15 @@
+{
+  "broker": "localhost",
+  "port": 1883,
+  "username": "",
+  "password": "",
+  "client_id": "xmesh_gateway_publisher",
+  "qos": 1,
+  "use_tls": false,
+  "tls_insecure": false,
+  "topics": {
+    "sensor_data": "mesh/ingest/{node_id}"
+  },
+  "keepalive": 60,
+  "clean_session": true
+}

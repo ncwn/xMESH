@@ -1,0 +1,957 @@
+% set 0 inch indentation
+\setlength{\parindent}{0in}
+% set paragraph space = 0 space
+\setlength{\parskip}{0mm}
+% set line space 1.5
+\setlength{\baselineskip}{1.6em}
+
+\chapter{METHODOLOGY}
+\label{chap:methodology}
+
+\section{Overview}
+
+This chapter details the systematic methodology to achieve the research objectives. The goal is to design, implement, and empirically evaluate a LoRa mesh network with an optimized gateway-aware cost routing protocol that addresses the scalability limitations of broadcast-based routing. The methodology is grounded in an iterative development process, allowing for the systematic implementation of functional layers including the network testbed, link-quality instrumentation, enhanced routing logic, and comprehensive data collection mechanisms, each followed by rigorous testing and validation. This structured process ensures the research is reproducible and that conclusions are based on empirical evidence collected through controlled experimentation with statistical validation.
+
+\section{System Architecture}
+
+The system architecture is a flexible testbed for developing and evaluating the LoRa mesh network, consisting of distinct hardware components with specific roles.
+
+\textbf{Components:}
+
+\begin{itemize}
+\item \textbf{Sensor Node}: A Heltec LoRa 32 V3 board that originates data (from a physical or simulated sensor) and participates in routing packets for other nodes.
+
+\item \textbf{Relay Node}: A Heltec LoRa 32 V3 board configured solely to forward packets, extending the network's range and providing path redundancy.
+
+\item \textbf{Gateway Node}: A dedicated Heltec LoRa 32 V3 board connected via USB to a Raspberry Pi. It is designated as the ROLE\_GATEWAY and serves as the bridge between the LoRa mesh and external IP networks.
+
+\item \textbf{Monitoring \& Gateway Host}: A Raspberry Pi that manages serial communication with the Gateway Node, parses incoming data, and publishes it to an MQTT broker for logging and analysis.
+\end{itemize}
+
+\textbf{Terminology Note:} This research initially proposed ``Router Node'' and ``Border Node'' terminology in the internship proposal (September 2025). Following implementation experience and advisor feedback (Dr. Adisorn Lertsinsrubtavee, October 2025), terminology was refined to ``Relay Node'' and ``Gateway Node'' for consistency with LoRaMesher library role conventions (\texttt{ROLE\_DEFAULT} for sensors/relays, \texttt{ROLE\_GATEWAY} for gateways) and to eliminate conceptual ambiguity between mesh packet forwarding (relay function) and network bridging to external IP infrastructure (gateway function). This clarification strengthens alignment between architectural description and firmware implementation.
+
+\textbf{Component Interaction}:
+
+A Sensor Node generates a data packet and addresses it to the Gateway Node. The LoRaMesher library consults its routing table to determine the next hop and transmits the packet. Relay Nodes forward the packet onward until it reaches the Gateway Node, which passes the payload over its serial connection to the Raspberry Pi. A Python script on the Pi formats the data into a JSON object and publishes it to an MQTT broker.
+
+\begin{figure}[H]
+\caption{High-Level System Architecture}
+\label{fig:system-architecture}
+\centering
+% TODO: Create image from original markdown - Figure 3.1
+\includegraphics[width=0.8\textwidth]{figures/figure3-1-system-architecture.jpg}
+\end{figure}
+
+Figure~\ref{fig:system-architecture} provides a clear overview of the project's components, showing how Sensor and Relay nodes form a mesh, with a Gateway Node bridging communication to a Raspberry Pi and the broader internet via an MQTT broker.
+
+\begin{figure}[H]
+\caption{Detailed Phase 1 Component Interaction}
+\label{fig:component-interaction}
+\centering
+% TODO: Create image from original markdown - Figure 3.2
+\includegraphics[width=0.8\textwidth]{figures/figure3-2-component-interaction.jpg}
+\end{figure}
+
+Figure~\ref{fig:component-interaction} details the specific hardware and software layers within each component, illustrating the flow of data from the sensor through the LoRaMesher library, across the mesh, and finally through the Raspberry Pi's application layer to MQTT.
+
+\begin{figure}[H]
+\caption{System Architecture with Data Flow}
+\label{fig:data-flow}
+\centering
+% TODO: Convert Mermaid diagram to image - Figure 3.2b: System Architecture with Data Flow
+% Shows: Sensor Node (ESP32-S3) -> Relay Node (ESP32-S3) -> Gateway Node (ESP32-S3) -> Raspberry Pi Host
+% With layers: Application/LoRaMesher/RadioLib/SX1262 and USB Serial bridge to Python/MQTT
+\includegraphics[width=0.9\textwidth]{figures/figure3-2b-data-flow.jpg}
+\end{figure}
+
+Figure~\ref{fig:data-flow} shows end-to-end data flow from sensor reading through multi-hop mesh routing to MQTT broker. Sensor node (blue) generates data, relay node (yellow) forwards packets, gateway node (green) bridges to Raspberry Pi via USB serial, and Python application (purple) publishes to MQTT for storage and analysis.
+
+\section{Network Design}
+\label{sec:network-design}
+
+The network design is centered on extending the LoRaMesher library with a gateway-aware cost routing mechanism and comprehensive data collection infrastructure.
+
+\begin{itemize}
+\item \textbf{Framework}: This research builds upon the LoRaMesher open-source library, leveraging its multi-threaded operation via FreeRTOS for concurrent handling of radio, packet processing, and routing updates.
+
+\item \textbf{Routing Protocol Logic}:
+\begin{itemize}
+\item \textbf{Baseline Protocol 1 (Flooding)}: A controlled flooding protocol where relay nodes rebroadcast received packets (with duplicate detection via sequence numbers). This baseline demonstrates the scalability limitations of broadcast-based approaches similar to laboratory flooding experiments.
+
+\item \textbf{Baseline Protocol 2 (Hop-Count)}: The default LoRaMesher proactive distance-vector algorithm where the sole routing metric is hop count. This serves as our primary performance benchmark representing standard metric-based routing.
+
+\item \textbf{Proposed Enhancement (Gateway-Aware Cost Routing)}: The implementation replaces the hop-count metric with a composite path cost function (Equation~\ref{eq:composite-cost}) specifically designed to improve scalability and gateway-directed routing. This function incorporates:
+\end{itemize}
+\end{itemize}
+
+\textbf{Composite Routing Metric Formula}:
+
+The path cost $C$ for reaching a destination through a neighbor $n$ is calculated as:
+
+\begin{equation}
+C_n = w_1 \cdot \text{HopCount}_n + w_2 \cdot (1 - \text{RSSI}_{\text{norm},n}) + w_3 \cdot (1 - \text{SNR}_{\text{norm},n}) + w_4 \cdot (\text{ETX}_n - 1) + w_5 \cdot \text{GatewayBias}_n
+\label{eq:composite-cost}
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $\text{HopCount}_n$: Number of hops to destination via neighbor $n$
+\item $\text{RSSI}_{\text{norm},n}$: Normalized RSSI value (0 to 1, where 1 represents strongest signal)
+\item $\text{SNR}_{\text{norm},n}$: Normalized SNR value (0 to 1, where 1 represents best signal quality)
+\item $\text{ETX}_n$: Expected Transmission Count, calculated via zero-overhead sequence-gap detection (no ACK packets required). Note: Formula uses (ETX - 1) so a perfect link (ETX=1.0) contributes zero cost
+\item $\text{GatewayBias}_n$: Load-based bias favoring lighter-loaded gateways, calculated as (load - avg\_load)/avg\_load, active only when avg\_load $>$ 0.2 pkt/min (bias activation threshold); gateway switching occurs when load difference exceeds 0.25 pkt/min (switch decision threshold)
+\item $w_1, w_2, w_3, w_4, w_5$: Fixed weighting factors ($W_1=1.0$, $W_2=0.3$, $W_3=0.2$, $W_4=0.4$, $W_5=1.0$, total=2.9) empirically chosen
+\end{itemize}
+
+\textbf{Normalization Functions}:
+
+\begin{itemize}
+\item RSSI: $\text{RSSI}_{\text{norm}} = \frac{\text{RSSI}_{\text{measured}} - \text{RSSI}_{\text{min}}}{\text{RSSI}_{\text{max}} - \text{RSSI}_{\text{min}}}$ (typical range: -120 dBm to -30 dBm)
+
+\item SNR: $\text{SNR}_{\text{norm}} = \frac{\text{SNR}_{\text{measured}} - \text{SNR}_{\text{min}}}{\text{SNR}_{\text{max}} - \text{SNR}_{\text{min}}}$ (typical range: -20 dB to +10 dB)
+\end{itemize}
+
+\textbf{Route Selection and Hysteresis}: The firmware collects these metrics on a per-packet, per-neighbor basis. Hysteresis logic (Equation~\ref{eq:hysteresis}) prevents route flapping by ensuring a new route is only adopted if its cost is lower than the current route's cost by 15\% (implemented in \texttt{config.h} and \texttt{RoutingTableService.cpp}):
+
+\begin{equation}
+C_{\text{new}} < C_{\text{current}} \cdot (1 - h)
+\label{eq:hysteresis}
+\end{equation}
+
+where $h = 0.15$ (15\% hysteresis threshold), equivalently: $C_{\text{new}} < 0.85 \cdot C_{\text{current}}$
+
+\begin{figure}[H]
+\caption{Packet Routing Sequence Diagram}
+\label{fig:routing-sequence}
+\centering
+% TODO: Convert Mermaid sequence diagram to image - Figure 3.3a: Packet Routing Sequence
+% Shows: Sensor Node (0xBB94) -> Relay Node (0x8154) -> Gateway Node (0xD218) -> Raspberry Pi (MQTT)
+% With routing table lookups, FWD counter increments, link quality metrics, and JSON publishing
+\includegraphics[width=0.9\textwidth]{figures/figure3-3a-routing-sequence.jpg}
+\end{figure}
+
+Figure~\ref{fig:routing-sequence} illustrates complete packet flow from sensor data generation through multi-hop mesh routing to MQTT publication. Demonstrates LoRaMesher routing table lookups, relay forwarding with FWD counter increment, link quality tracking at gateway, and serial bridge to Raspberry Pi application layer.
+
+\begin{figure}[H]
+\caption{Comparison of Routing Metric Logic}
+\label{fig:routing-comparison}
+\centering
+% TODO: Convert Mermaid comparison diagram to image - Figure 3.3: Routing Metric Logic
+% Compares Protocol 2 (hop-count only) vs Protocol 3 (composite cost with W1-W5 weights)
+% Shows multi-metric integration for quality-aware routing
+\includegraphics[width=0.9\textwidth]{figures/figure3-3-routing-comparison.jpg}
+\end{figure}
+
+Figure~\ref{fig:routing-comparison} compares routing decision logic between baseline and proposed protocols. \textbf{Protocol 2} (top, red) uses hop count exclusively, blindly selecting shortest paths regardless of link quality. \textbf{Protocol 3} (bottom, multi-colored) integrates six weighted components: $W_1$ hop count (blue), $W_2$ RSSI + $W_3$ SNR for link quality (blue), $W_4$ ETX for reliability via zero-overhead sequence-gap detection (green), $W_5$ gateway load bias for traffic distribution (yellow), and weak link penalty discouraging marginal paths (red). This multi-metric approach enables quality-aware routing demonstrated by 3-hop path selection (cost=3.28) over weak 2-hop alternatives (cost=3.95) in outdoor validation tests.
+
+\begin{figure}[H]
+\caption{Gateway-Aware Cost Routing Metric Calculation Process}
+\label{fig:cost-calculation}
+\centering
+% TODO: Convert Mermaid flowchart to image - Figure 3.4: Gateway-Aware Cost Calculation
+% Shows: Packet reception -> Sequence gap detection -> ETX calculation -> Cost computation -> Hysteresis check
+% Highlights zero-overhead ETX tracking innovation
+\includegraphics[width=0.8\textwidth]{figures/figure3-4-cost-calculation.jpg}
+\end{figure}
+
+Figure~\ref{fig:cost-calculation} illustrates the complete cost routing metric calculation process. The key innovation is \textbf{zero-overhead ETX tracking} (highlighted in red): when sequence gaps are detected (e.g., receiving seq=10 after seq=8), the system infers packet loss without requiring ACK packets, consuming zero duty cycle. Link metrics (RSSI, SNR, ETX) are normalized and weighted ($W_1$-$W_5$) to compute composite cost. Hysteresis threshold (15\%) prevents route flapping by accepting new routes only when cost improvement exceeds threshold.
+
+\section{Data Collection and Logging Infrastructure}
+
+To enable rigorous empirical analysis and ensure reproducibility, a comprehensive data collection and logging system will be implemented across the network testbed.
+
+\textbf{On-Device Data Collection}:
+
+Each node will maintain the following data structures in memory and periodically log them via serial output:
+
+\begin{enumerate}
+\item \textbf{Link Quality Metrics} (per neighbor, per packet):
+\begin{itemize}
+\item RSSI (dBm): Extracted from RadioLib's packet reception callback
+\item SNR (dB): Extracted from RadioLib's packet reception callback
+\item Timestamp: Millisecond-precision using ESP32's \texttt{millis()} function
+\item Packet sequence number: For duplicate detection and ordering
+\end{itemize}
+
+\item \textbf{Link Quality Tracking} (per neighbor, sliding window):
+\begin{itemize}
+\item Sequence-gap detection: Identifies packet loss by detecting discontinuities in received sequence numbers (e.g., receiving seq=10 after seq=8 infers seq=9 was lost)
+\item Sliding window: 10-packet boolean array tracking SUCCESS/FAILURE outcomes per neighbor
+\item ETX calculation: Computed as \texttt{ETX = 1.0 / (successCount / windowSize)} where successCount is tallied from the sliding window
+\item EWMA smoothing: Applied with $\alpha=0.3$ to reduce jitter from single packet losses
+\item \textbf{Zero overhead}: No ACK packets required; exploits sequence numbers already present in data packets, consuming zero duty cycle for link quality measurement
+\end{itemize}
+
+\item \textbf{Routing Events}:
+\begin{itemize}
+\item Routing table updates: Logged with timestamp, destination, old cost, new cost, selected next-hop
+\item Route changes: Logged when next-hop changes for any destination
+\item Gateway discovery: Logged when a node with ROLE\_GATEWAY is discovered
+\end{itemize}
+
+\item \textbf{Network Performance Data}:
+\begin{itemize}
+\item Packet transmission log: Sequence number, destination, timestamp, transmission success/failure
+\item Packet reception log: Sequence number, source, timestamp, RSSI, SNR
+\item Duty-cycle usage: Calculated as \texttt{(airtime\_used / 3600000ms) * 100\%} tracked per hour
+\end{itemize}
+\end{enumerate}
+
+\textbf{Data Storage and Export}:
+
+\begin{itemize}
+\item \textbf{Serial export}: Logs streamed via USB serial at 115200 baud in CSV format with fields: timestamp, node\_id, event\_type, src, dest, rssi, snr, etx, hop\_count, packet\_size, sequence, cost, next\_hop, gateway
+
+\item \textbf{Raspberry Pi aggregation}: Python script (\texttt{serial\_collector.py}) on Raspberry Pi:
+\begin{itemize}
+\item Reads serial data from all connected nodes (Gateway Node + any USB-connected monitoring nodes)
+\item Parses CSV entries and timestamps with system time for synchronization
+\item Stores in SQLite database with tables: \texttt{experiments} (metadata), \texttt{packets} (per-packet logs)
+\item Publishes real-time data to MQTT broker with configurable topic structure (e.g., \texttt{mesh/ingest/\{node\_id\}}) for live monitoring
+\end{itemize}
+\end{itemize}
+
+\textbf{Data Analysis Pipeline}:
+
+Post-experiment, data will be extracted from SQLite database for statistical analysis using Python (pandas, scipy, matplotlib):
+\begin{itemize}
+\item PDR calculation: \texttt{(unique packets received / unique packets sent) * 100\%}
+\item End-to-end latency: \texttt{receive\_timestamp - send\_timestamp} (requires time synchronization)
+\item Network overhead: \texttt{(total transmissions / successful deliveries)} ratio
+\item Route stability: \texttt{count(route\_change\_events) / experiment\_duration}
+\end{itemize}
+
+\section{Hardware and Software Setup}
+
+The selection of hardware and software is based on available components and their suitability for the project.
+
+\textbf{Hardware}:
+
+\begin{itemize}
+\item \textbf{Nodes}: 3 to 5 Heltec WiFi LoRa 32 V3 boards
+\item \textbf{Gateway Host}: 1 to 2 Raspberry Pi boards (Model 3B+ or newer)
+\end{itemize}
+
+\textbf{Software}:
+
+\begin{itemize}
+\item \textbf{IDE}: PlatformIO within Visual Studio Code
+\item \textbf{Programming Languages}: C++ for firmware, Python 3 for host scripts
+\item \textbf{Key Libraries}: LoRaMesher, RadioLib, pyserial, paho-mqtt
+\item \textbf{Firmware Implementation}: Two separate firmware applications will be developed: a general firmware for standard mesh nodes and a specialized firmware for the Gateway Node to manage its unique gateway and serial communication roles.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Hardware and Software Components}
+\label{tab:hardware-software}
+\begin{tabular}{|p{3.5cm}|p{4.5cm}|p{5cm}|}
+\hline
+\textbf{Component Type} & \textbf{Item} & \textbf{Specification / Version} \\
+\hline
+Microcontroller & Heltec WiFi LoRa 32 V3 & ESP32-S3 MCU, Dual-Core LX7 \\
+\hline
+LoRa Transceiver & Semtech SX1262 & Onboard Heltec LoRa 32 V3 \\
+\hline
+Gateway Host & Raspberry Pi & Model 3 or higher \\
+\hline
+IDE & Visual Studio Code with PlatformIO & Latest stable versions \\
+\hline
+Firmware Libraries & LoRaMesher, RadioLib & Latest stable versions from GitHub \\
+\hline
+Host Scripts & Python 3, pyserial, paho-mqtt & Latest stable versions from PyPI \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Experimental Setup and Environment Specifications}
+
+To ensure reproducible and fair evaluation, the experimental environment and operational parameters are precisely specified.
+
+\textbf{Test Environment}:
+
+\begin{itemize}
+\item \textbf{Primary Testing Location}: Indoor controlled environment at Asian Institute of Technology (AIT) InterLAB facilities
+\begin{itemize}
+\item Environment type: Office/laboratory space with concrete walls, metal furniture, and standard office equipment
+\item Approximate dimensions: 15m x 20m primary testing area, with corridor extensions for multi-hop scenarios
+\item Background RF: Typical office environment (WiFi 2.4/5GHz, Bluetooth devices); LoRa channel monitored for interference
+\end{itemize}
+
+\item \textbf{Outdoor Validation Testing} (limited scope): Campus outdoor area for range and NLoS validation
+\begin{itemize}
+\item Environment type: Open campus area with buildings, trees, and varying terrain
+\item Purpose: Validate indoor findings under real-world propagation conditions
+\end{itemize}
+\end{itemize}
+
+\textbf{LoRa Radio Configuration} (AS923 Thailand Compliance):
+
+\begin{itemize}
+\item \textbf{Frequency Band}: AS923 (923.0 -- 923.4 MHz)
+\item \textbf{Channels}: 923.2 MHz (primary), 923.4 MHz (secondary for interference testing)
+\item \textbf{Spreading Factor (SF)}: SF7 (default for maximum data rate, $\sim$5.47 kbps), SF8-SF10 tested for range/interference scenarios
+\item \textbf{Bandwidth}: 125 kHz (standard LoRa bandwidth)
+\item \textbf{Coding Rate}: 4/5 (default LoRa forward error correction)
+\item \textbf{Transmission Power}: 14 dBm indoor tests (under 16 dBm EIRP limit for AS923), 20 dBm outdoor tests (configurable range: 2-20 dBm)
+\item \textbf{Antenna}: Onboard PCB antenna on Heltec LoRa 32 V3 (omnidirectional, $\sim$2 dBi gain)
+\item \textbf{Duty Cycle Enforcement}: 1\% maximum airtime per hour (36 seconds per hour) monitored and enforced in firmware
+\end{itemize}
+
+\textbf{Node Placement and Topology}:
+
+\begin{itemize}
+\item \textbf{Baseline 3-Node Linear Topology}:
+\begin{itemize}
+\item Node spacing: 5 meters indoor (sufficient for multi-hop with SF7)
+\item Layout: Sensor Node -- Relay Node -- Gateway Node (straight line configuration)
+\end{itemize}
+
+\item \textbf{Scalability 4-6 Node Topologies}:
+\begin{itemize}
+\item 3-node: linear
+\item 4-node: Diamond topology (2 parallel paths between source and gateway)
+\item 5-node: Star-like with gateway at center
+\item Node spacing: 5-8 meters to ensure 1-2 hop paths available
+\end{itemize}
+
+\item \textbf{Interference Scenario}:
+\begin{itemize}
+\item Non-LoRa interference source: 900MHz band jammer or high-power WiFi positioned 2 meters from critical link
+\item Interference pattern: Continuous or bursty (10s on, 20s off) to test route adaptation
+\end{itemize}
+\end{itemize}
+
+\begin{figure}[H]
+\caption{Network Topology Layouts}
+\label{fig:topology-layouts}
+\centering
+% TODO: Convert Mermaid topology diagram to image - Figure 3.5a: Network Topology Layouts
+% Shows: 3-node linear, 4-node diamond, 5-node mesh with dual gateways
+% Color coding: Sensor (blue), Relay (yellow), Gateway (green)
+\includegraphics[width=0.9\textwidth]{figures/figure3-5a-topology-layouts.jpg}
+\end{figure}
+
+Figure~\ref{fig:topology-layouts} shows test topology configurations: (Top) 3-node linear for basic validation, (Middle) 4-node diamond for path redundancy testing, (Bottom) 5-node mesh for dual-gateway load sharing validation. Sensor nodes (blue) generate data, relay nodes (yellow) forward packets, gateway nodes (green) bridge to Raspberry Pi. All tests conducted at 923.2 MHz, SF7, 14 dBm indoor / 20 dBm outdoor.
+
+\begin{figure}[H]
+\caption{Gateway-Aware Route Selection Example}
+\label{fig:route-selection}
+\centering
+% TODO: Convert Mermaid comparison diagram to image - Figure 3.5b: Route Selection Example
+% Compares Protocol 2 (weak 2-hop direct) vs Protocol 3 (quality-aware 3-hop relay)
+% Demonstrates cost-based routing superiority with RSSI values
+\includegraphics[width=0.9\textwidth]{figures/figure3-5b-route-selection.jpg}
+\end{figure}
+
+Figure~\ref{fig:route-selection} compares routing decisions: Protocol 2 (hop-count only) selects 2-hop direct path despite weak link (RSSI=-139 dBm, shown in red), while Protocol 3 (cost-based) selects 3-hop relay path with better link quality (all links $>$-110 dBm, shown in green). The weak link penalty (1.5) on the 2-hop path causes cost=3.95, exceeding the 3-hop path cost=3.28, demonstrating quality-aware routing superiority. Outdoor Test 7 validated this behavior with FWD=48 relay forwarding events.
+
+\textbf{Traffic Load and Message Patterns}:
+
+\begin{itemize}
+\item \textbf{Baseline Traffic Load}:
+\begin{itemize}
+\item Message generation rate: 1 packet per 60 seconds per sensor node (conservative to respect duty-cycle)
+\item Payload size: 50 bytes (typical sensor reading with metadata)
+\item Message type: Unicast from sensor nodes to gateway node (gateway-directed traffic)
+\end{itemize}
+
+\item \textbf{Scalability Testing Traffic}:
+\begin{itemize}
+\item Increased load: Up to 1 packet per 30 seconds as network proves stable
+\item Maximum theoretical load calculation:
+\begin{itemize}
+\item Time-on-air (ToA) for 50-byte packet at SF7, BW125, CR4/5: $\sim$50-80 ms
+\item With 1\% duty-cycle: Maximum $\sim$640 packets per node per hour
+\item Test load: Conservative 60 packets/hour (6\% of maximum)
+\end{itemize}
+\end{itemize}
+
+\item \textbf{Stress Testing} (optional, if time permits):
+\begin{itemize}
+\item Burst traffic: 5 packets sent rapidly (100ms intervals) every 5 minutes
+\item Multi-destination: Some nodes send to other nodes, not just gateway
+\end{itemize}
+\end{itemize}
+
+\textbf{Time Synchronization}:
+
+\begin{itemize}
+\item \textbf{Method}: NTP synchronization on Raspberry Pi; relative timestamps on ESP32 nodes
+\item \textbf{Latency measurement}: Sender embeds ESP32 timestamp in packet; receiver records reception time; Raspberry Pi calculates end-to-end latency based on Gateway arrival time.
+\item \textbf{Clock drift mitigation}: Latency is measured as End-to-End Arrival Time at the Gateway. The Gateway (NTP-synced via Raspberry Pi) timestamps packets upon reception. Sender timestamps are used for relative ordering.
+\end{itemize}
+
+\textbf{Interference and Environmental Control}:
+
+\begin{itemize}
+\item \textbf{Controlled interference}: Dedicated non-LoRa RF source (900 MHz) for interference scenario testing
+\item \textbf{Environmental logging}: Temperature, humidity recorded for correlation with RF performance (optional)
+\item \textbf{Channel monitoring}: Spectrum analyzer or SDR monitoring 923 MHz channel for background noise floor measurement before each test run
+\end{itemize}
+
+\section{Baseline Protocols and Statistical Comparison Methodology}
+
+A rigorous comparative study requires clearly defined baselines and a statistically valid benchmarking methodology.
+
+\textbf{Baseline Definitions}:
+
+\begin{enumerate}
+\item \textbf{Baseline 1 - Flooding-Based Routing}: A controlled flooding protocol where relay nodes rebroadcast received data packets (with duplicate detection via sequence numbers). This represents the broadcast-based approach demonstrating the scalability challenge that the proposed protocol aims to address.
+
+\item \textbf{Baseline 2 - Hop-Count Routing}: The default LoRaMesher proactive distance-vector protocol using hop count as the sole routing metric. This represents the standard, off-the-shelf performance of metric-based table-driven routing.
+
+\item \textbf{Proposed Protocol - Gateway-Aware Cost Routing}: The enhanced protocol incorporating the composite cost metric as defined in Section~\ref{sec:network-design}, with RSSI, SNR, ETX, and gateway-bias components.
+\end{enumerate}
+
+\textbf{Experimental Design}:
+
+\begin{itemize}
+\item \textbf{A/B/C Testing Approach}: For each test scenario (topology, traffic load, interference condition), three separate experiment runs will be conducted:
+\begin{enumerate}
+\item Run A: Flooding-based routing
+\item Run B: Hop-count routing
+\item Run C: Gateway-aware cost routing
+\end{enumerate}
+
+\item \textbf{Run Duration}: Test durations range from 10 minutes (quick validation tests) to 180 minutes (extended scalability tests), with 60 minutes as the standard baseline (allowing 60 packet transmissions per node at 1 packet/minute rate) to gather statistically significant data. Short tests (10-30 min) validate functionality, while extended tests (60-180 min) demonstrate long-term stability and Trickle convergence to I\_max intervals.
+
+\item \textbf{Controlled Variables}: All parameters except routing protocol remain constant across A/B/C runs:
+\begin{itemize}
+\item Node placement and topology
+\item LoRa radio settings (SF, BW, power)
+\item Traffic generation rate and pattern
+\item Environmental conditions (same location, same time window if possible)
+\end{itemize}
+
+\item \textbf{Repetition}: Each A/B/C test triplet will be repeated 3 times on different days to account for temporal variations, yielding 9 total runs per scenario (3 protocols $\times$ 3 repetitions).
+\end{itemize}
+
+\textbf{Statistical Analysis Method}:
+
+To prove ``significant improvement,'' the following statistical tests will be employed:
+
+\begin{enumerate}
+\item \textbf{Paired t-test} (for PDR and Latency comparisons):
+\begin{itemize}
+\item Null hypothesis $H_0$: No significant difference between proposed protocol and baseline
+\item Alternative hypothesis $H_1$: Proposed protocol shows significant improvement
+\item Significance level: $\alpha = 0.05$ (95\% confidence)
+\item Application: Compare mean PDR and mean latency across 3 repetitions
+\item Tool: scipy.stats.ttest\_rel() in Python
+\end{itemize}
+
+\item \textbf{Mann-Whitney U Test} (for non-parametric validation):
+\begin{itemize}
+\item Applied when data does not follow normal distribution
+\item Compares median performance metrics between protocols
+\item Significance level: $\alpha = 0.05$
+\end{itemize}
+
+\item \textbf{Effect Size Calculation} (Cohen's d):
+\begin{itemize}
+\item Quantifies magnitude of improvement beyond statistical significance
+\item Formula: $d = \frac{\mu_{\text{proposed}} - \mu_{\text{baseline}}}{\sigma_{\text{pooled}}}$
+\item Interpretation: $d > 0.5$ indicates medium effect, $d > 0.8$ indicates large effect
+\end{itemize}
+
+\item \textbf{Confidence Intervals}:
+\begin{itemize}
+\item 95\% confidence intervals calculated for all mean performance metrics
+\item Reported as: Mean $\pm$ CI (e.g., ``PDR = 94.5\% $\pm$ 2.1\%'')
+\end{itemize}
+\end{enumerate}
+
+\textbf{Success Criteria}:
+
+The proposed protocol will be considered successfully validated if:
+\begin{itemize}
+\item PDR shows statistically significant improvement ($p < 0.05$) with effect size $d > 0.5$
+\item Average latency remains comparable or lower than hop-count baseline (no significant degradation)
+\item Network overhead (total transmissions / successful deliveries) is significantly lower than flooding baseline ($p < 0.05$)
+\item Scalability: Performance degradation from 3 to 5 nodes is less severe than both baselines
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Benchmarking Plan for Proposed Protocol vs. Baselines}
+\label{tab:benchmarking-plan}
+\begin{tabular}{|p{4cm}|p{3cm}|p{3.5cm}|p{3.5cm}|}
+\hline
+\textbf{Protocol} & \textbf{Routing Metric} & \textbf{Key Characteristic} & \textbf{Purpose in Study} \\
+\hline
+\textbf{Baseline 1: Hop-Count} & Hop Count & Selects shortest path by node count & Benchmark for metric-based routing; represents current state-of-art \\
+\hline
+\textbf{Baseline 2: Flooding} & None (broadcast all) & Rebroadcasts all packets for redundancy & Demonstrates scalability problem of broadcast-based approaches \\
+\hline
+\textbf{Proposed: Gateway-Aware Cost} & Composite (Hop, RSSI, SNR, ETX, Gateway-Bias) & Selects reliable, gateway-directed paths based on real-time link quality & Demonstrates scalability improvement and performance enhancement \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:benchmarking-plan} clearly defines the three protocols under comparison, ensuring the experimental methodology addresses both supervisors' feedback on scalability and comparative analysis.
+
+\section{Evaluation Metrics}
+
+To objectively assess network performance, the research employs a set of clear, quantifiable evaluation metrics. These metrics were selected to provide comprehensive assessment of network reliability, timeliness, and stability.
+
+\begin{itemize}
+\item \textbf{Packet Delivery Ratio (PDR)}: The primary metric for network reliability. It is the ratio of unique data packets successfully received at the gateway host to the total number transmitted by the source nodes.
+\begin{equation}
+\text{PDR} = \frac{\text{Unique Packets Received}}{\text{Unique Packets Sent}} \times 100\%
+\end{equation}
+
+\item \textbf{End-to-End Latency}: Measures the timeliness of data delivery. It is the time from packet creation at the source node until it is received by the script on the Raspberry Pi, measured using embedded timestamps.
+
+\item \textbf{Route Stability}: Quantifies the churn in routing paths. It will be measured by logging every change to the routing tables on each node. A lower frequency of changes indicates a more stable protocol.
+
+\item \textbf{Scalability}: The impact of network density on performance. Core metrics (PDR, Latency) will be measured as the number of active nodes is increased from 3 to 5.
+\end{itemize}
+
+\begin{table}[H]
+\centering
+\caption{Evaluation Plan and Key Performance Indicators (KPIs)}
+\label{tab:evaluation-metrics}
+\begin{tabular}{|p{3cm}|p{3cm}|p{4cm}|p{4cm}|}
+\hline
+\textbf{Metric} & \textbf{Definition} & \textbf{Measurement Method} & \textbf{Success Criterion} \\
+\hline
+\textbf{Packet Delivery Ratio (PDR)} & The percentage of sent packets successfully received at the gateway. & Comparison of sender vs. receiver sequence numbers logged in database. & The proposed protocol achieves statistically significant higher PDR than both baselines ($p < 0.05$, effect size $d > 0.5$). \\
+\hline
+\textbf{End-to-End Latency} & The time for a packet to travel from source node to gateway Raspberry Pi. & Timestamps embedded in packet payloads, correlated with reception timestamp at Raspberry Pi. & The proposed protocol maintains comparable or lower average latency than hop-count baseline (no significant degradation, $p > 0.05$). \\
+\hline
+\textbf{Network Overhead} & The ratio of total packet transmissions to successful deliveries. & \texttt{Total\_TX / Successful\_RX} calculated from packet logs across all nodes. & The proposed protocol shows significantly lower overhead than flooding baseline ($p < 0.05$), demonstrating reduced broadcast traffic. \\
+\hline
+\textbf{Route Stability} & The frequency of routing table changes under stable conditions. & Logging routing table update events; calculate \texttt{route\_changes / hour}. & The proposed protocol exhibits comparable or fewer route changes than hop-count baseline under stable conditions. \\
+\hline
+\textbf{Scalability} & Performance degradation as network density increases. & Measure PDR and latency across 3, 4, 5, 6-node networks; calculate degradation slope. & The proposed protocol shows less performance degradation (smaller negative slope) than both baselines as nodes increase. \\
+\hline
+\textbf{Duty-Cycle Compliance} & Airtime usage remains within regulatory 1\% limit. & Track airtime per hour; \texttt{(cumulative\_ToA / 3600000ms) $\times$ 100\%}. & All protocols remain under 1\% duty-cycle; proposed protocol uses less airtime than flooding baseline. \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:evaluation-metrics} defines the specific, measurable metrics that will be used to validate the research claims, linking the experimental work directly to the project objectives with clear statistical success criteria.
+
+\section{Implementation Phases}
+
+The project will be executed over an eight-week period, following a structured, phased roadmap with clear deliverables and validation steps.
+
+\begin{itemize}
+\item \textbf{Phase 1: Foundation \& Baseline Testing (Week 1-2)}:
+\begin{itemize}
+\item Set up physical testbed with 3-node baseline LoRaMesher firmware
+\item Establish Raspberry Pi data collection infrastructure (serial reader, SQLite database, MQTT broker)
+\item Implement and validate hop-count baseline protocol
+\item Implement and validate flooding baseline protocol
+\item Deliverable: Working 3-node testbed with both baseline protocols functional; initial PDR and latency measurements logged
+\end{itemize}
+
+\item \textbf{Phase 2: Link Metrics \& Instrumentation (Week 3)}:
+\begin{itemize}
+\item Instrument firmware to collect and log link-quality data (RSSI, SNR)
+\item Implement zero-overhead ETX tracking via sequence-gap detection
+\item Validate data collection pipeline (node $\rightarrow$ serial $\rightarrow$ Raspberry Pi $\rightarrow$ database)
+\item Deliverable: Comprehensive link metrics logged for baseline protocols; data analysis scripts functional
+\end{itemize}
+
+\item \textbf{Phase 3: Gateway-Aware Cost Routing Implementation (Week 4-5)}:
+\begin{itemize}
+\item Implement composite cost metric calculation in LoRaMesher routing table service
+\item Implement hysteresis logic to prevent route flapping
+\item Implement gateway-bias component for gateway-directed routing
+\item Tune weighting factors ($w_1, w_2, w_3, w_4, w_5$) through empirical testing
+\item Conduct initial A/B/C tests against both baselines
+\item Deliverable: Functional gateway-aware cost routing protocol; preliminary performance comparison data
+\end{itemize}
+
+\item \textbf{Phase 4: Duty-Cycle Monitoring \& Optimization (Week 5-6)}:
+\begin{itemize}
+\item Implement duty-cycle tracking and enforcement mechanism
+\item Implement adaptive HELLO packet scheduler (Trickle-inspired) to reduce overhead
+\item Validate 1\% duty-cycle compliance under all protocols
+\item Deliverable: Duty-cycle compliant implementations; network overhead metrics for all protocols
+\end{itemize}
+
+\item \textbf{Phase 5: Scalability Testing \& Evaluation (Week 6-7)}:
+\begin{itemize}
+\item Expand testbed to 4, 5, 6-node topologies
+\item Conduct comprehensive A/B/C testing across all scenarios (baseline, scalability, interference)
+\item Perform statistical analysis (t-tests, effect size calculations)
+\item Deliverable: Complete dataset for all test scenarios; statistical validation of performance improvements
+\end{itemize}
+
+\item \textbf{Phase 6: Final Evaluation \& Documentation (Week 7-8)}:
+\begin{itemize}
+\item Conduct final validation tests with repetitions (n=3 per scenario)
+\item Analyze results and generate performance visualizations
+\item Document findings, prepare code repository for open-source release
+\item Write final internship report
+\item Deliverable: Complete internship report; open-source code release; performance analysis documentation
+\end{itemize}
+\end{itemize}
+
+\begin{figure}[H]
+\caption{Project Implementation Timeline}
+\label{fig:implementation-timeline}
+\centering
+\includegraphics[width=0.9\textwidth]{figures/image8.jpg}
+\end{figure}
+
+This chart visually represents the project schedule, showing the duration and overlap of each implementation phase over the internship period.
+
+\section{Limitations, Assumptions, and Risk Mitigation}
+
+A clear understanding of the project's limitations, underlying assumptions, and potential risks is crucial for interpreting the results and planning mitigation strategies.
+
+\textbf{Technical Limitations}:
+
+\begin{itemize}
+\item \textbf{Network Scale}: The testbed is limited to a maximum of 5 nodes due to hardware availability. This small scale restricts the ability to draw definitive conclusions about performance in much larger networks (e.g., 50+ nodes). However, the scalability trend from 3 to 5 nodes provides indicative insights for larger deployments.
+
+\item \textbf{Mobility}: The experiments will focus on static nodes. The protocol's performance in highly mobile environments is not evaluated. While LoRa's typical IoT applications (environmental sensors, infrastructure monitoring) involve static deployments, mobile scenarios remain a limitation.
+
+\item \textbf{Power Consumption}: This research will not perform a detailed power consumption analysis or battery lifetime estimation. While the proposed routing optimizations may reduce duty-cycle usage (thus improving power efficiency), quantitative power measurements are beyond scope.
+
+\item \textbf{Duty-Cycle Constraints}: The 1\% duty-cycle limit imposed by AS923 regulations significantly restricts message rates. This constraint limits the volume of data that can be collected per experiment and may mask performance differences under higher loads. Mitigation: Carefully designed traffic patterns to maximize information within duty-cycle budget.
+
+\item \textbf{Synchronization Challenges}: Achieving precise time synchronization across ESP32 nodes without GPS or dedicated time-sync hardware is challenging. Clock drift between nodes may introduce errors in end-to-end latency measurements. Mitigation: Use of NTP-synchronized Raspberry Pi as time reference and periodic synchronization beacons; latency analysis will account for estimated drift bounds ($\pm$50ms).
+\end{itemize}
+
+\textbf{Assumptions}:
+
+\begin{itemize}
+\item \textbf{Library Stability}: We assume the open-source LoRaMesher library and RadioLib provide functionally correct and stable baseline implementations. Risk: Potential bugs in libraries could introduce confounding factors. Mitigation: Extensive baseline testing and community engagement to identify known issues; any discovered bugs will be documented.
+
+\item \textbf{Controlled Environment}: We assume the indoor test environment at AIT InterLAB provides reproducible radio frequency conditions for fair comparison across experiments. Risk: Unforeseen interference or environmental changes. Mitigation: Pre-test channel monitoring, environmental logging, and statistical repetition (3 trials per scenario) to identify anomalies.
+
+\item \textbf{Infrastructure Reliability}: We assume the Raspberry Pi and local MQTT broker are reliable and do not introduce significant latency or packet loss. Risk: Infrastructure failures affecting data collection. Mitigation: Redundant logging (local SD card backup on Raspberry Pi), system monitoring scripts to detect failures.
+
+\item \textbf{Gateway Availability}: We assume at least one node designated as ROLE\_GATEWAY is always reachable by all network nodes (directly or via multi-hop). Risk: Isolated network partitions if gateway node fails. Mitigation: Use of 2 gateway nodes in larger topologies for redundancy; experiments with single gateway will explicitly test partition recovery.
+\end{itemize}
+
+\textbf{Additional Limitations Identified}:
+
+\begin{itemize}
+\item \textbf{Antenna Configuration}: All nodes use identical onboard PCB antennas. The impact of heterogeneous antenna configurations (directional vs. omnidirectional, different gains) is not explored.
+
+\item \textbf{Frequency Plan Restrictions}: Testing is limited to AS923 band (Thailand). Performance in other regions (EU868, US915) with different regulations and propagation characteristics is not validated.
+
+\item \textbf{Environmental Diversity}: Primary testing in indoor office environment limits generalizability to outdoor, industrial, or agricultural deployments with different propagation characteristics. Outdoor validation testing (limited scope) will partially address this.
+
+\item \textbf{Security and Encryption Overhead}: While LoRaMesher supports basic encryption, this study does not evaluate the performance impact of cryptographic overhead or security attack scenarios. Security is assumed to be handled by existing library mechanisms.
+
+\item \textbf{Traffic Patterns}: Focus on gateway-directed unicast traffic (sensors to gateway). Performance with peer-to-peer traffic, broadcast messages, or bidirectional flows is not comprehensively evaluated.
+\end{itemize}
+
+\textbf{Risk Mitigation Summary}:
+
+\begin{table}[h]
+\centering
+\caption{Risk Mitigation Strategy}
+\label{tab:risk-mitigation}
+\begin{tabular}{|p{4cm}|p{3cm}|p{7cm}|}
+\hline
+\textbf{Risk} & \textbf{Impact} & \textbf{Mitigation Strategy} \\
+\hline
+Hardware failures & Loss of experimental data & Spare hardware availability; incremental data backup \\
+\hline
+Library bugs & Invalid baseline comparison & Community validation; extensive baseline testing; bug documentation \\
+\hline
+Time synchronization drift & Inaccurate latency measurements & NTP reference; periodic sync beacons; drift bounds estimation \\
+\hline
+Environmental interference & Non-reproducible results & Channel monitoring; environmental logging; statistical repetition (n=3) \\
+\hline
+Duty-cycle exhaustion & Incomplete data collection & Conservative traffic planning; adaptive rate reduction \\
+\hline
+Small network scale & Limited scalability insights & Focus on scalability \emph{trend} analysis; clear scope definition \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Implementation Details and Algorithms}
+\label{sec:implementation-details}
+
+This section presents key algorithms implemented for Protocol 3. Three algorithms form the protocol core: adaptive HELLO scheduling (Algorithm~\ref{alg:trickle}), zero-overhead link quality tracking (Algorithm~\ref{alg:etx}), and multi-metric cost calculation (Algorithm~\ref{alg:cost}).
+
+\subsection{Algorithm 1: Trickle Adaptive HELLO Scheduler}
+
+\textbf{Purpose:} Reduce control overhead during stable network periods while maintaining fast convergence during topology changes.
+
+\textbf{Parameters:}
+\begin{itemize}
+\item $I_{\text{min}} = 60$ seconds (minimum interval)
+\item $I_{\text{max}} = 600$ seconds (maximum interval)
+\item $k = 1$ (redundancy threshold)
+\end{itemize}
+
+\textbf{Algorithm:}
+
+\begin{algorithm}[H]
+\caption{Trickle Adaptive HELLO Scheduler}
+\label{alg:trickle}
+\SetAlgoLined
+\DontPrintSemicolon
+
+\textbf{Initialize:}\;
+\Indp
+Set current interval to minimum ($I_{\text{current}} = 60$ seconds)\;
+Record last transmission time\;
+\Indm
+
+\textbf{Main Loop} (while network active):\;
+\Indp
+Calculate random transmission point within current interval\;
+\Indp
+$\rightarrow$ Random time between $I_{\text{current}}/2$ and $I_{\text{current}}$\;
+\Indm
+
+Wait until scheduled transmission time\;
+
+\textbf{Transmission Decision:}\;
+\Indp
+Count consistent HELLOs heard from neighbors during interval\;
+
+\If{heard $k$ or more consistent HELLOs}{
+    $\rightarrow$ Suppress my transmission (neighbors already announced)\;
+    $\rightarrow$ Increment suppression counter\;
+}
+\Else{
+    $\rightarrow$ Broadcast HELLO packet with routing information\;
+    $\rightarrow$ Update last transmission time\;
+    $\rightarrow$ Increment transmission counter\;
+}
+\Indm
+
+\textbf{Safety Mechanism} (prevent over-suppression):\;
+\Indp
+\If{time since last transmission exceeds 180 seconds}{
+    $\rightarrow$ Force immediate HELLO transmission\;
+    $\rightarrow$ Reset last transmission time\;
+    $\rightarrow$ Ensures neighbors detect presence within 360-380 seconds\;
+}
+\Indm
+
+\textbf{Interval Adjustment:}\;
+\Indp
+\If{topology change detected (routing table size/routes changed)}{
+    $\rightarrow$ Reset interval to minimum ($I_{\text{current}} = 60$ seconds)\;
+    $\rightarrow$ Enable fast convergence for new network state\;
+}
+\ElseIf{heard sufficient consistent HELLOs}{
+    $\rightarrow$ Double current interval (respecting maximum limit)\;
+    $\rightarrow$ $I_{\text{current}} = \min(I_{\text{current}} \times 2, I_{\text{max}})$\;
+    $\rightarrow$ Exponential backoff: 60s $\rightarrow$ 120s $\rightarrow$ 240s $\rightarrow$ 480s $\rightarrow$ 600s\;
+}
+\Indm
+\Indm
+\end{algorithm}
+
+\textbf{Rationale:} This RFC 6206-based approach achieves 85.7-90.9\% internal suppression efficiency in stable networks. The 180-second safety ceiling balances overhead reduction (31-33\% measured) with fault detection requirements, preventing over-suppression while enabling near-theoretical efficiency during stable periods. Topology-triggered resets ensure 60-120 second convergence when network changes occur (validated in Section~\ref{sec:trickle-overhead}).
+
+\subsection{Algorithm 2: Zero-Overhead ETX via Sequence Gap Detection}
+
+\textbf{Purpose:} Track link quality without acknowledgment packets, consuming zero duty cycle.
+
+\textbf{Per-Neighbor State:}
+\begin{itemize}
+\item Last received sequence number (initialized to 0)
+\item Sliding window of 10 recent packet outcomes (SUCCESS or FAILURE)
+\item Exponentially weighted moving average (EWMA) for smoothing
+\end{itemize}
+
+\textbf{Algorithm:}
+
+\begin{algorithm}[H]
+\caption{Zero-Overhead ETX via Sequence Gap Detection}
+\label{alg:etx}
+\SetAlgoLined
+\DontPrintSemicolon
+
+\textbf{Upon Receiving Packet from Neighbor:}\;
+\Indp
+Extract sequence number from packet header\;
+
+\textbf{Calculate Expected Sequence:}\;
+\Indp
+Expected = last received sequence + 1\;
+\Indm
+
+\textbf{Gap Detection Logic:}\;
+\Indp
+\uIf{Sequence matches expected (no gap)}{
+    $\rightarrow$ Record SUCCESS in sliding window\;
+    $\rightarrow$ No packet loss detected\;
+}
+\uElseIf{Sequence exceeds expected (gap detected)}{
+    $\rightarrow$ Calculate gap size = received sequence - expected sequence\;
+
+    \For{each missing sequence number in gap}{
+        $\rightarrow$ Record FAILURE in sliding window\;
+        $\rightarrow$ Infer packet was lost in transit\;
+    }
+
+    $\rightarrow$ Record SUCCESS for current packet (successfully received)\;
+}
+\Else{Sequence less than expected (out-of-order or wraparound)}{
+    $\rightarrow$ Record SUCCESS (treat as valid late arrival)\;
+}
+\Indm
+
+\textbf{Update Last Received Sequence:}\;
+\Indp
+Store current sequence number for next comparison\;
+\Indm
+
+\textbf{Calculate Link Quality:}\;
+\Indp
+Count successful receptions in sliding window (0-10 range)\;
+Compute instantaneous ETX = window size / success count\;
+\Indp
+$\rightarrow$ Perfect link (10/10 successes) = ETX 1.0\;
+$\rightarrow$ Degraded link (7/10 successes) = ETX 1.43\;
+$\rightarrow$ Poor link (5/10 successes) = ETX 2.0\;
+\Indm
+\Indm
+
+\textbf{Apply Exponential Smoothing:}\;
+\Indp
+$\text{ETX}_{\text{smoothed}} = 0.3 \times \text{ETX}_{\text{instantaneous}} + 0.7 \times \text{ETX}_{\text{previous}}$\;
+$\rightarrow$ Reduces jitter from single packet losses\;
+$\rightarrow$ $\alpha = 0.3$ balances responsiveness with stability\;
+\Indm
+\Indm
+\end{algorithm}
+
+\textbf{Innovation Example:} When receiving packet sequence 10 after receiving sequence 8, the algorithm infers sequence 9 was lost. The sliding window records [FAILURE, SUCCESS], updating ETX calculation without requiring acknowledgment packets.
+
+\textbf{Rationale:} Traditional ETX implementations require explicit ACK packets for every data transmission, consuming duty cycle proportional to traffic load. This sequence-gap approach achieves equivalent link quality measurement with zero protocol overhead, critical for 1\% duty cycle regulatory constraint. The 10-packet sliding window provides sufficient statistical confidence while maintaining temporal responsiveness to changing link conditions.
+
+\subsection{Algorithm 3: Multi-Metric Cost Calculation}
+
+\textbf{Purpose:} Select optimal routes based on hop count, link quality, reliability, and gateway load balance.
+
+\textbf{Inputs:}
+\begin{itemize}
+\item Neighbor $N$ (candidate next hop)
+\item Destination $D$ (target node)
+\item Routing table with hop counts and gateway load information
+\item Link quality metrics for neighbor $N$ (RSSI, SNR, ETX)
+\end{itemize}
+
+\textbf{Output:} Composite route cost via neighbor $N$ to destination $D$ (lower is better)
+
+\textbf{Algorithm:}
+
+\begin{algorithm}[H]
+\caption{Multi-Metric Cost Calculation (Part 1: Metric Collection)}
+\label{alg:cost-part1}
+\SetAlgoLined
+\DontPrintSemicolon
+
+\textbf{Step 1: Extract Route Metrics}\;
+\Indp
+Retrieve hop count to destination $D$ via neighbor $N$ from routing table\;
+\Indm
+
+\textbf{Step 2: Normalize Link Quality Indicators}\;
+\Indp
+\textbf{RSSI Normalization:}\;
+\Indp
+$\rightarrow$ Convert RSSI from [-120 dBm, -30 dBm] range to [0, 1] scale\;
+$\rightarrow$ Formula: (RSSI - RSSI\_min) / (RSSI\_max - RSSI\_min)\;
+$\rightarrow$ Result: 0 = weak signal, 1 = strong signal\;
+\Indm
+
+\textbf{SNR Normalization:}\;
+\Indp
+$\rightarrow$ Convert SNR from [-20 dB, +10 dB] range to [0, 1] scale\;
+$\rightarrow$ Formula: (SNR - SNR\_min) / (SNR\_max - SNR\_min)\;
+$\rightarrow$ Result: 0 = noisy channel, 1 = clean channel\;
+\Indm
+
+\textbf{Retrieve ETX:}\;
+\Indp
+$\rightarrow$ Query ETX value for neighbor $N$ from link quality tracker\;
+$\rightarrow$ Values: 1.0 (perfect) to 10.0 (unreliable)\;
+\Indm
+\Indm
+
+\textbf{Step 3: Calculate Gateway Load Bias ($W_5$ Component)}\;
+\Indp
+\If{destination is a gateway}{
+    Decode gateway load from routing table HELLO header\;
+    Calculate average load across all known gateways\;
+
+    \textbf{Load Bias Activation:}\;
+    \Indp
+    \If{average load $>$ 0.2 pkt/min (minimum threshold)}{
+        $\rightarrow$ bias = (gateway load - average load) / average load\;
+        $\rightarrow$ Positive bias penalizes heavily loaded gateways\;
+        $\rightarrow$ Negative bias favors lightly loaded gateways\;
+    }
+    \Else{
+        $\rightarrow$ bias = 0.0 (network idle, no bias needed)\;
+    }
+    \Indm
+}
+\Else{(destination is not a gateway)}{
+    $\rightarrow$ bias = 0.0 ($W_5$ only applies to gateway selection)\;
+}
+\Indm
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Multi-Metric Cost Calculation (Part 2: Cost Computation)}
+\label{alg:cost-part2}
+\label{alg:cost}
+\SetAlgoLined
+\DontPrintSemicolon
+
+\textbf{Step 4: Assess Weak Link Penalty}\;
+\Indp
+\If{RSSI $<$ -125 dBm OR SNR $<$ -12 dB}{
+    $\rightarrow$ penalty = 1.5 (strong penalty discouraging marginal links)\;
+    $\rightarrow$ Encourages routing via relay over weak direct paths\;
+}
+\Else{
+    $\rightarrow$ penalty = 0.0 (link quality acceptable)\;
+}
+\Indm
+
+\textbf{Step 5: Compute Composite Cost}\;
+\Indp
+\begin{align*}
+\text{cost} &= W_1 \times \text{hop\_count} \\
+            &+ W_2 \times (1 - \text{RSSI}_{\text{normalized}}) \\
+            &+ W_3 \times (1 - \text{SNR}_{\text{normalized}}) \\
+            &+ W_4 \times (\text{ETX} - 1.0) \\
+            &+ W_5 \times \text{gateway\_bias} \\
+            &+ \text{weak\_link\_penalty}
+\end{align*}
+
+Where weights are:\;
+\Indp
+$W_1 = 1.0$ (hop count)\;
+$W_2 = 0.3$ (RSSI)\;
+$W_3 = 0.2$ (SNR)\;
+$W_4 = 0.4$ (ETX)\;
+$W_5 = 1.0$ (gateway bias)\;
+\Indm
+\Indm
+
+\textbf{Step 6: Return Cost Value}\;
+\Indp
+Lower cost indicates better route quality\;
+\Indm
+\end{algorithm}
+
+\textbf{$W_5$ Load Sharing Details:} The implementation employs a two-threshold design to balance load distribution with routing stability. \textbf{Threshold 1 (Bias Activation)}: The $W_5$ bias term activates when average gateway load exceeds 0.2 pkt/min, enabling the system to calculate bias values as (load - avg\_load)/avg\_load. This threshold prevents bias calculation during idle network periods where load differences are negligible. \textbf{Threshold 2 (Gateway Switching)}: Sensors only change gateway selection when load difference exceeds 0.25 pkt/min (\texttt{LOAD\_SWITCH\_THRESHOLD} in \texttt{main.cpp}), preventing oscillation under small transient load fluctuations. This two-threshold architecture ensures stable gateway selection while enabling effective load distribution, validated by 45/55 traffic split (13 vs 16 packets) in dual-gateway tests demonstrating controlled load balancing without route churning.
+
+\textbf{Weak Link Penalty Rationale:} The 1.5 penalty (Step 4) enables intelligent multi-hop path selection. Example: A direct 1-hop path with RSSI=-130 dBm (weak) receives cost $1.0 + 0.3 + 0.2 + 0 + 0 + 1.5 = 3.0$, while a 2-hop path with good signal quality receives cost $2.0 + 0.06 + 0.04 + 0 + 0 + 0 = 2.1$. The protocol correctly selects the 2-hop path despite extra hop, validating quality-aware routing.
+
+\section{Chapter Summary}
+
+This chapter presented the systematic methodology for designing, implementing, and evaluating three LoRa mesh routing protocols addressing broadcast-based scalability limitations. The research employs comparative A/B/C testing across three protocol implementations: Protocol 1 (flooding baseline demonstrating $O(N^2)$ scalability problem), Protocol 2 (standard LoRaMesher hop-count routing as performance benchmark), and Protocol 3 (proposed gateway-aware cost routing with adaptive overhead reduction). The experimental testbed comprises 5 Heltec WiFi LoRa 32 V3 boards configured in sensor, relay, and gateway roles, operating at 923.2 MHz under AS923 regulatory constraints (1\% duty cycle limit). Data collection infrastructure captures packet-level metrics including sequence numbers, RSSI, SNR, hop counts, and timestamps for quantitative performance analysis.
+
+Protocol 3 enhances standard hop-count routing through three algorithmic innovations validated in Section~\ref{sec:implementation-details}: Trickle RFC 6206 adaptive HELLO scheduler (Algorithm~\ref{alg:trickle}) achieving 85.7-90.9\% internal suppression efficiency while maintaining 60-120 second convergence during topology changes, zero-overhead ETX tracking (Algorithm~\ref{alg:etx}) via sequence-gap detection eliminating ACK packet requirements, and multi-metric cost function (Algorithm~\ref{alg:cost}, $W_1$-$W_5$ weighting) integrating hop count, link quality (RSSI/SNR), reliability (ETX), and gateway load bias for quality-aware path selection. The 180-second safety HELLO mechanism balances overhead reduction with fault detection requirements, enabling 360-380 second failure detection while allowing exponential backoff to 600-second maximum intervals during stable periods. Chapter~\ref{chap:results} will present empirical validation results from 20 hardware tests, demonstrating protocol effectiveness through quantitative comparison of packet delivery ratio, control overhead, and fault tolerance characteristics.

@@ -1,0 +1,68 @@
+# IDE and AI Assistant Files
+.context/
+.gemini/
+.vscode/
+.idea/
+
+# Proposal and Documentation (Private)
+proposal_docs/
+
+# Experimental Results and Logs (Private)
+experiments/
+
+# LaTeX Build Files
+*.aux
+*.log
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+*.lof
+*.lot
+
+# PlatformIO
+.pio/
+.vscode/
+*.pio
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Environment
+.env
+*.env
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*~

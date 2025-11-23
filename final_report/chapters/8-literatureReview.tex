@@ -1,0 +1,115 @@
+% set 0 inch indentation
+\setlength{\parindent}{0in}
+% set paragraph space = 0 space
+\setlength{\parskip}{0mm}
+% set line space 1.5
+\setlength{\baselineskip}{1.6em}
+
+\chapter{LITERATURE REVIEW}
+\label{chap:literature}
+
+This chapter provides a critical review of existing literature pertinent to LoRa-based mesh networks. It begins by contextualizing the shift from standard LoRaWAN to more flexible mesh topologies. It then presents a comparative analysis of prominent LoRa mesh implementations, with particular attention to their routing mechanisms and scalability characteristics. The chapter reviews fundamental principles of ad-hoc routing protocols, distinguishing between proactive, reactive, and flooding-based approaches. Finally, it clearly articulates the research gap that this work aims to address, specifically focusing on the scalability limitations of broadcast-based routing in LoRa mesh networks.
+
+\section{LoRa and the Evolution Towards Mesh Topologies}
+
+LoRa technology has become a cornerstone of modern LPWAN deployments due to its long-range and low-power characteristics. The LoRaWAN protocol standardizes its use in a star-of-stars topology, which is optimized for scalability in scenarios with widespread gateway coverage. However, this reliance on a single-hop connection to a fixed infrastructure creates inherent vulnerabilities. In environments with physical obstructions or in remote locations, end-devices can become isolated, leading to ``coverage holes'' and network fragmentation.
+
+Mesh networking directly addresses these shortcomings by creating a decentralized, multi-hop communication fabric. Nodes in a mesh network can relay messages for one another, extending the network's reach and creating alternative data paths. This topology enhances network resilience through self-healing properties and allows for flexible, ad-hoc deployment without costly gateway installations.
+
+However, the transition to mesh networking introduces new technical challenges, particularly regarding routing protocol design. The limited bandwidth of LoRa (typically 250 bps to 50 kbps depending on spreading factor), strict regulatory duty-cycle constraints (1\% airtime in most regions), and the asymmetric nature of radio links create a unique environment where routing decisions significantly impact network performance and scalability. Traditional routing approaches from WiFi or cellular mesh networks cannot be directly applied without careful adaptation to these constraints.
+
+\section{Comparative Analysis of LoRa Mesh Network Implementations}
+
+Several platforms have emerged to facilitate LoRa-based mesh networking. A critical analysis is necessary to select the most appropriate foundation for this research, with particular attention to their routing mechanisms and scalability characteristics.
+
+\subsection{\textit{LoRaMesher}}
+
+LoRaMesher is an open-source C++ library designed to create multi-hop LoRa mesh networks on ESP32-based microcontrollers. It operates independently of LoRaWAN, providing a true peer-to-peer networking stack. Its core is a proactive distance-vector routing protocol, where each node maintains a routing table with paths to other nodes. The default routing metric is simply hop count, and nodes periodically broadcast ``HELLO'' packets to keep tables current. This proactive approach ensures low latency, as routes are always available. However, the broadcast-based dissemination of routing updates creates scalability concerns as network density increases.
+
+\subsection{\textit{Meshtastic}}
+
+Meshtastic is an open-source project focused on user-facing applications for off-grid messaging and GPS location sharing. It employs a ``managed flood'' routing algorithm, a form of intelligent broadcast designed for robust message delivery in dynamic and mobile networks. In this approach, nodes rebroadcast received packets with controlled redundancy to ensure delivery. While effective for small, mobile networks and prioritizing reliability over efficiency, this flooding mechanism inherently suffers from poor scalability. As network size increases, the redundant transmissions create exponential growth in channel utilization, rapidly consuming the limited LoRa duty-cycle budget and causing network congestion.
+
+\subsection{\textit{ChirpStack Gateway Mesh}}
+
+ChirpStack Gateway Mesh is a software component designed to extend an existing LoRaWAN network by solving gateway backhaul connectivity issues. It creates a multi-hop network at the gateway infrastructure level, allowing remote ``Relay Gateways'' to forward LoRaWAN packets to an internet-connected ``Border Gateway''. This preserves the single-hop star topology from the perspective of the end-devices, which remain standard LoRaWAN devices. As it does not implement node-to-node routing, it is unsuitable for this research.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of LoRa Mesh Network Solutions}
+\label{tab:lora_mesh_comparison}
+\begin{tabular}{|p{3cm}|p{3.5cm}|p{3.5cm}|p{3.5cm}|}
+\hline
+\textbf{Feature} & \textbf{LoRaMesher} & \textbf{Meshtastic} & \textbf{ChirpStack Gateway Mesh} \\
+\hline
+\textbf{Primary Use Case} & Foundational library for custom peer-to-peer mesh applications & Off-grid messaging and location sharing application & Extending LoRaWAN gateway backhaul connectivity \\
+\hline
+\textbf{Network Topology} & True peer-to-peer mesh & True peer-to-peer mesh & Multi-hop gateway backhaul; star topology for end-devices \\
+\hline
+\textbf{Routing Protocol} & Proactive Distance-Vector (Hop-count based) & Managed Flood Routing (Broadcast-based) & Not applicable at end-device level; relays packets between gateways \\
+\hline
+\textbf{Scalability Limitation} & Periodic broadcast of routing updates consumes duty-cycle & Flooding mechanism causes broadcast storms in larger networks & Not applicable \\
+\hline
+\textbf{Suitability for Research} & \textbf{High:} Provides a classic, table-driven protocol ideal for optimization and scalability improvements. & \textbf{Medium:} Demonstrates broadcast-based approach useful as comparison baseline. & \textbf{Not Applicable:} Does not address node-to-node routing. \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:lora_mesh_comparison} justifies the selection of LoRaMesher, as its classic, table-driven routing protocol provides the ideal foundation for implementing and evaluating a gateway-aware cost routing metric. Additionally, Meshtastic's flooding approach provides a valuable baseline for demonstrating scalability improvements.
+
+\section{Routing Protocols for Wireless Ad-Hoc Networks}
+
+Routing protocols are broadly classified into proactive, reactive, and flooding-based paradigms, representing fundamental trade-offs between latency, overhead, and scalability.
+
+\subsection{\textit{Proactive (Table-Driven) Protocols}}
+
+Proactive protocols, like Destination-Sequenced Distance-Vector (DSDV) and Optimized Link State Routing (OLSR), maintain continuously updated routing tables for all reachable nodes. The primary advantage is low latency, as a route is almost always available for immediate data transmission. However, this comes at the cost of control overhead, as the continuous exchange of routing updates consumes bandwidth and energy. In LoRa networks with strict duty-cycle limits, this overhead becomes particularly problematic as network size increases.
+
+\subsection{\textit{Reactive (On-Demand) Protocols}}
+
+Reactive protocols, like Ad-hoc On-demand Distance Vector (AODV) and Dynamic Source Routing (DSR), discover routes only when a source has data to send. This is achieved by flooding a Route Request (RREQ) packet. The main advantage is \textbf{low control overhead}, which conserves bandwidth and energy, making these protocols inherently more scalable. The principal disadvantage is the \textbf{high initial latency} incurred during the route discovery phase, which can be unacceptable for time-sensitive applications.
+
+\subsection{\textit{Flooding-Based Protocols}}
+
+Flooding-based protocols represent the simplest approach to mesh networking, where each node rebroadcasts received packets to ensure message delivery through redundancy. This approach guarantees message delivery in connected networks and requires no routing table maintenance. However, it suffers from severe scalability limitations due to the broadcast storm problem. As network density increases, each packet triggers multiple retransmissions, leading to exponential growth in channel utilization, packet collisions, and rapid exhaustion of duty-cycle budgets. While simple and robust for small networks, flooding becomes impractical beyond a handful of nodes in bandwidth-constrained LoRa environments.
+
+\begin{table}[H]
+\centering
+\caption{Comparison of Proactive, Reactive, and Flooding-Based Routing Protocol Paradigms}
+\label{tab:routing_protocol_comparison}
+\begin{tabular}{|p{3cm}|p{3.5cm}|p{3.5cm}|p{3.5cm}|}
+\hline
+\textbf{Characteristic} & \textbf{Proactive (Table-Driven)} & \textbf{Reactive (On-Demand)} & \textbf{Flooding-Based} \\
+\hline
+\textbf{Route Availability} & Always available; routes are pre-computed & Established only when needed & No routes; packets broadcast to all neighbors \\
+\hline
+\textbf{Initial Packet Latency} & \textbf{Low:} No route discovery delay & \textbf{High:} Requires a route discovery phase & \textbf{Low:} Immediate broadcast \\
+\hline
+\textbf{Control Overhead} & \textbf{High:} Constant exchange of routing updates & \textbf{Low:} Control traffic only during route discovery & \textbf{Very High:} Every data packet is rebroadcast multiple times \\
+\hline
+\textbf{Scalability} & \textbf{Moderate:} Limited by routing update overhead & \textbf{High:} Scales well due to on-demand nature & \textbf{Poor:} Broadcast storms severely limit network size \\
+\hline
+\textbf{Example Protocols} & DSDV, OLSR, LoRaMesher's default protocol & AODV, DSR & Simple flooding, Epidemic routing, Meshtastic's managed flood \\
+\hline
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:routing_protocol_comparison} highlights the fundamental trade-offs between latency, overhead, and scalability, contextualizing the decision to optimize a proactive protocol while using flooding as a baseline for comparison.
+
+\section{Research Gap and Justification}
+
+The literature reveals a clear research gap centered on the scalability limitations of current LoRa mesh network implementations. While various routing approaches exist, they all face challenges when applied to LoRa's unique constraints.
+
+\textbf{The Scalability Problem}: Existing LoRa mesh implementations predominantly use either simple flooding-based mechanisms (like Meshtastic) or basic hop-count proactive routing (like LoRaMesher). Flooding-based approaches suffer from broadcast storms that make them impractical beyond small networks. Even proactive protocols with hop-count metrics, while more efficient than flooding, still rely on periodic broadcast of routing updates and fail to account for the highly variable and asymmetric nature of real-world LoRa links.
+
+\textbf{Prior Methods' Limitations}: A simple hop-count metric cannot distinguish between a strong, reliable single-hop link and a weak, intermittent one. Similarly, it cannot prioritize routes toward gateway nodes, leading to inefficient path selection where packets may traverse multiple hops only to reach a node with poor gateway connectivity. This results in packet loss, retransmissions, and wasted duty-cycle budget. Flooding-based approaches guarantee delivery but at an unsustainable cost in terms of channel utilization and scalability.
+
+\textbf{The Research Gap}: What is missing is a routing protocol that combines the low-latency benefits of proactive routing with intelligent, metric-based path selection that specifically addresses scalability. Such a protocol must: (1) reduce broadcast overhead compared to flooding approaches, (2) select paths based on empirical link quality rather than simple hop count, (3) incorporate gateway-awareness to optimize routes toward gateway nodes, and (4) operate efficiently within LoRa's duty-cycle constraints.
+
+\textbf{This Research's Contribution}: This work addresses the identified gap by implementing a gateway-aware cost routing protocol that makes routing decisions based not only on path length, but on empirical link quality and gateway proximity. By integrating dynamic metrics including RSSI, SNR, and ETX into routing decisions, along with gateway-awareness, the protocol selects paths that are demonstrably more reliable and efficient. This research enhances a proactive protocol because its low-latency foundation is advantageous for predictable IoT traffic patterns. The implementation mitigates overhead drawbacks through targeted optimizations, including Trickle RFC 6206 adaptive scheduling for routing updates and explicit duty-cycle monitoring, achieving a solution that balances low latency with scalability.
+
+\textbf{Comparative Baseline Strategy}: Following the supervisor's recommendation, this research will compare the proposed protocol against two baselines: (1) the standard LoRaMesher hop-count routing, and (2) a flooding-based approach similar to laboratory experiments. This dual-baseline comparison will comprehensively demonstrate both the scalability improvements over flooding and the performance enhancements over simple metric-based routing.
+
+\section{Chapter Summary}
+
+This chapter has reviewed the evolution from LoRaWAN to mesh topologies and identified the critical scalability challenge posed by broadcast-based routing mechanisms. The comparative analysis justified the selection of LoRaMesher as the ideal platform for enhancement while identifying Meshtastic's flooding approach as a valuable baseline for comparison. An analysis of routing paradigms highlighted the trade-offs between proactive, reactive, and flooding-based approaches, with particular attention to their scalability implications in duty-cycle-constrained LoRa environments. Crucially, we have identified a clear research gap: the need for a gateway-aware, metric-based routing protocol that addresses the broadcast storm scalability limitation while maintaining the low-latency benefits of proactive routing. Chapter~\ref{chap:methodology} will outline the detailed methodology to design, implement, and validate a protocol that addresses this gap through empirical comparison against both hop-count and flooding-based baselines.

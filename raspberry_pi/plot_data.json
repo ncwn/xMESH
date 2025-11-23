@@ -1,0 +1,172 @@
+{
+  "protocol1": [
+    {
+      "file": "experiments/results/protocol1/4node_linear_20251111_161918/ANALYSIS.md",
+      "pdr": 85.0,
+      "nodes": 4,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol1/3node_30min_val_10dBm_20251110_174519/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 3,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol1/5node_linear_cold-start_20251111_223728/ANALYSIS.md",
+      "pdr": 96.7,
+      "nodes": 5,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol1/4node_diamond_20251111_183343/ANALYSIS.md",
+      "pdr": 96.7,
+      "nodes": 4,
+      "hello_counts": [
+        3
+      ]
+    }
+  ],
+  "protocol2": [
+    {
+      "file": "experiments/results/protocol2/5node_linear_cold-start_20251111_231744/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        55
+      ]
+    },
+    {
+      "file": "experiments/results/protocol2/4node_diamond_20251111_191255/ANALYSIS.md",
+      "pdr": 96.7,
+      "nodes": 4,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol2/3node_30min_val_10dBm_20251110_182442/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 3,
+      "hello_counts": [
+        15
+      ]
+    },
+    {
+      "file": "experiments/results/protocol2/5node_linear_stable_20251111_235227/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        75,
+        55
+      ]
+    },
+    {
+      "file": "experiments/results/protocol2/5node_linear_stable_after-10min-one-sensor-down_20251112_014558/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol2/4node_linear_20251111_171221/ANALYSIS.md",
+      "pdr": 81.7,
+      "nodes": 4,
+      "hello_counts": [
+        1,
+        15,
+        60,
+        2,
+        1,
+        1
+      ]
+    }
+  ],
+  "protocol3": [
+    {
+      "file": "experiments/results/protocol3/2sensornode_quick_validation_20251117_144732/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 3,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol3/protocol3_validation_suite_20251113/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        57
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/5node_sensors_coldstart_20251114_230621/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        1
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/5node_sensors_failure-test_after_600s_20251114_235048/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        3,
+        15,
+        15,
+        75,
+        15,
+        2
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/5node_sensors_extended_3hrs_20251115_005946/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        32,
+        1,
+        32,
+        90,
+        2
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/5node_physical_distance_20251117_172028/ANALYSIS.md",
+      "pdr": 32.0,
+      "nodes": 5,
+      "hello_counts": [
+        376
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/4node_physical_long_distance_suite/sensor-cold-start_Problem-with-LoRaMesher-1hop/ANALYSIS.md",
+      "pdr": null,
+      "nodes": 4,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol3/4node_physical_long_distance_suite/sensor-cold-start_Weak-link/ANALYSIS.md",
+      "pdr": null,
+      "nodes": 4,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol3/protocol3_validation_suite_20251113/w5_gateway_indoor_over_I600s_node_detection_20251113_120301/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 5,
+      "hello_counts": [
+        2,
+        600
+      ]
+    },
+    {
+      "file": "experiments/results/protocol3/protocol3_validation_suite_20251113/w5_gateway_indoor_20251113_013301/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 4,
+      "hello_counts": []
+    },
+    {
+      "file": "experiments/results/protocol3/protocol3_validation_suite_20251113/w5_gateway_phy_20251113_181954/ANALYSIS.md",
+      "pdr": 100.0,
+      "nodes": 4,
+      "hello_counts": []
+    }
+  ]
+}

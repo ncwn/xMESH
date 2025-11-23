@@ -1,0 +1,166 @@
+% set 0 inch indentation
+\setlength{\parindent}{0in}
+% set paragraph space = 1.5 space
+\setlength{\parskip}{0mm}
+% set line space 1.5
+\setlength{\baselineskip}{1.6em}
+
+\chapter{INTRODUCTION}
+\label{chap:introduction}
+
+\section{Background of the Study}
+\label{sec:background}
+
+The Internet of Things (IoT) represents a paradigm shift in which physical objects are embedded with sensors, software, and other technologies to connect and exchange data over the internet. This pervasive connectivity has unlocked transformative applications across diverse sectors, including smart cities, industrial automation, and precision agriculture. A critical enabler of the IoT is the availability of suitable wireless communication technologies. While short-range options like WiFi and cellular networks provide local or high-bandwidth coverage, a significant gap exists for applications that require long-range communication with minimal power consumption.
+
+Low-Power Wide-Area Networks (LPWANs) have emerged to fill this void, offering connectivity over several kilometers while enabling battery-powered devices to operate for years. Among the leading LPWAN technologies is LoRa (Long Range), a physical layer modulation technique based on Chirp Spread Spectrum (CSS). LoRa's foundation provides a high link budget and resilience to interference, making it well-suited for challenging radio environments.
+
+The most common implementation of LoRa is within the LoRaWAN protocol, which employs a star-of-stars topology where end-nodes transmit data in a single hop to gateways. This architecture is efficient for large-scale networks with sufficient gateway density. However, the single-hop constraint is a significant limitation in scenarios with signal obstruction or in remote areas where deploying internet-connected gateways is infeasible. In these cases, coverage gaps can compromise the network's functionality.
+
+To overcome these limitations, mesh networking presents a powerful alternative. In a mesh network, nodes can act as relays, forwarding data for other nodes. This multi-hop capability dynamically extends network coverage, enhances resilience through redundant paths, and allows for flexible, ad-hoc deployment. By enabling devices to cooperate, a LoRa-based mesh network can form a self-healing and scalable communication fabric, ideal for robust IoT deployments.
+
+\section{Statement of the Problem}
+\label{sec:problem}
+
+The initial research objective for this internship was to integrate an existing sensor platform, the AIT Hazemon Node, with a newly developed LoRa mesh network. The proposed architecture involved connecting a Heltec LoRa 32 V3 board to the Hazemon node's ESP32 microcontroller via a Universal Asynchronous Receiver-Transmitter (UART) interface.
+
+However, a detailed feasibility analysis revealed an insurmountable technical impediment. The ESP32 at the core of the Hazemon stack had all its available hardware UART ports allocated to other essential functions. Consequently, no physical port was available to establish the required communication link. This hardware constraint rendered the initial integration plan infeasible.
+
+\begin{figure}[H]
+\caption{Diagram of the UART Hardware Constraint on the Hazemon Node}
+\label{fig:uart-constraint}
+\centering
+\includegraphics[width=0.8\textwidth]{figures/image1.jpg}
+\end{figure}
+
+Figure~\ref{fig:uart-constraint} illustrates the core technical issue, showing the Hazemon node's ESP32 with all UART ports (UART0, UART01, UART02) occupied, leaving no available port for the planned integration with the Heltec LoRa 32 V3 board.
+
+Alternative solutions, such as introducing a third microcontroller as an intermediary, were considered but dismissed as they would introduce significant complexity, increase power consumption, and create additional points of failure, making the system inefficient and less robust.
+
+\begin{figure}[H]
+\caption{Illustration of the Inefficient Three-Board Workaround}
+\label{fig:three-board}
+\centering
+\includegraphics[width=0.8\textwidth]{figures/image2.jpg}
+\end{figure}
+
+Figure~\ref{fig:three-board} shows the complex and resource-intensive alternative considered, which involved adding a third ESP32 board to manage communications, highlighting its inefficiency and justifying the decision to pivot the research focus.
+
+This technical roadblock has led to a strategic pivot in the research focus. The problem is now redefined from one of heterogeneous system integration to a more fundamental challenge in LoRa mesh networking: the scalability limitation caused by broadcast-based routing protocols.
+
+Existing LoRa mesh implementations predominantly rely on broadcast or flooding mechanisms to disseminate routing information and relay data packets. In these protocols, nodes indiscriminately retransmit received packets to all neighbors, ensuring message delivery through redundancy. While this approach is simple and robust in small networks, it creates a critical scalability bottleneck. As the number of nodes increases, each packet triggers multiple retransmissions, leading to a broadcast storm phenomenon. This results in severe channel congestion, packet collisions, exponential growth in airtime consumption, and rapid exhaustion of the mandatory LoRa duty-cycle budget (typically 1\% in regulated bands). Consequently, network performance degrades catastrophically beyond a small number of nodes, limiting practical deployment scenarios.
+
+This research addresses this fundamental limitation by designing and implementing an intelligent, gateway-aware cost routing protocol that eliminates unnecessary broadcasts through metric-based path selection. By establishing efficient routes based on real-time link quality and gateway proximity, the proposed approach aims to achieve sustainable network scalability while maintaining reliability in resource-constrained LoRa environments.
+
+\section{Research Questions}
+\label{sec:research-questions}
+
+To address the redefined problem statement, this research will be guided by the following questions:
+
+\begin{itemize}
+\item \textbf{Primary Question}: How can a gateway-aware cost routing protocol improve the scalability and performance of LoRa mesh networks by reducing broadcast overhead and implementing intelligent, metric-based path selection compared to traditional flooding and hop-count approaches?
+
+\item \textbf{Secondary Questions}:
+\begin{itemize}
+\item What is the most effective method for implementing and instrumenting the LoRaMesher library on Heltec LoRa 32 V3 hardware to create a stable, multi-hop testbed capable of collecting granular network performance data?
+
+\item Which combination of link-quality metrics (e.g., Expected Transmission Count (ETX), Received Signal Strength Indicator (RSSI), Signal-to-Noise Ratio (SNR)) provides the most significant and reliable improvement to routing decisions within the LoRaMesher framework while reducing network overhead?
+
+\item How does the performance of the optimized gateway-aware cost routing protocol compare to both the baseline hop-count metric and flooding-based approaches in terms of PDR, end-to-end latency, network overhead, and route stability across different network scales?
+
+\item What is a viable architecture for a gateway node that effectively bridges the private LoRa mesh network with standard IP networks using a Raspberry Pi and MQTT?
+\end{itemize}
+\end{itemize}
+
+\section{Objectives of the Study}
+\label{sec:objectives}
+
+The research aims to achieve a central objective supported by several specific, measurable sub-objectives.
+
+\begin{itemize}
+\item \textbf{Main Objective}: To design, implement, and empirically evaluate a scalable LoRa mesh network featuring a gateway-aware cost routing protocol that addresses broadcast-based routing limitations, using ESP32-based hardware.
+
+\item \textbf{Sub-objectives}:
+\begin{itemize}
+\item To establish a functional multi-node LoRa mesh testbed using 3 to 5 Heltec LoRa 32 V3 boards and a Raspberry Pi for network monitoring and data collection.
+
+\item To enhance LoRaMesher's default proactive distance-vector routing algorithm by integrating real-time link-quality metrics into the path cost calculation, with gateway-awareness to optimize routes toward designated gateway nodes.
+
+\item To design and implement a gateway node using a Raspberry Pi that bridges LoRa mesh traffic to an MQTT broker for comprehensive data logging and analysis.
+
+\item To systematically evaluate and compare the performance of the optimized protocol against both baseline hop-count routing and flooding-based approaches, using quantifiable metrics including PDR, latency, network overhead, and route stability.
+
+\item To validate the scalability improvements by demonstrating sustained performance as network density increases from 3 to 5 nodes, while maintaining compliance with LoRa duty-cycle regulations.
+\end{itemize}
+\end{itemize}
+
+\section{Statement of Contribution}
+\label{sec:contribution}
+
+This research makes the following primary contributions:
+
+\begin{itemize}
+\item \textbf{A Gateway-Aware Cost Routing Metric}: I propose and implement a composite routing metric for LoRa mesh networks that combines static hop count with dynamic link-quality indicators (RSSI, SNR, ETX) and gateway-awareness. This provides a scalable and intelligent path selection mechanism that reduces broadcast overhead compared to flooding-based approaches and improves upon existing hop-count-based methods.
+
+\item \textbf{Empirical Validation Through Comparative Analysis}: I provide comprehensive performance evaluation of the proposed protocol against two baseline approaches: (1) the standard LoRaMesher hop-count routing, and (2) a flooding-based routing mechanism. This multi-baseline comparison, conducted on real-world hardware testbed across 20 tests spanning 60+ hours, offers practical, evidence-based insights into the protocol's effectiveness in addressing scalability limitations.
+
+\item \textbf{An Open-Source Implementation}: The optimized routing logic is implemented as an extension to the open-source LoRaMesher library, making the contribution accessible to the broader research and developer community for use in future IoT projects.
+
+\item \textbf{Scalability Analysis Framework}: I provide a systematic methodology for evaluating LoRa mesh network scalability, including traffic load modeling, duty-cycle compliance monitoring, and performance degradation analysis as network density increases.
+\end{itemize}
+
+\textbf{Novel Contributions Beyond Prior Work:}
+
+\begin{enumerate}
+\item \textbf{Complete RFC 6206 Trickle Integration}: I implement the first full Trickle adaptive scheduler integrated with LoRaMesher firmware. Prior work mentioned ``Trickle-inspired'' scheduling without implementation details or validation.
+
+\item \textbf{LOCAL Fault Isolation Discovery}: I discover and validate that Trickle interval resets operate as local per-node decisions rather than network-wide cascades, limiting fault impact regionally. This finding represents a new contribution to Trickle literature.
+
+\item \textbf{Zero-Overhead ETX Tracking}: I design sequence-gap detection for link quality tracking requiring zero ACK packets, eliminating traditional ETX overhead.
+
+\item \textbf{W5 Active Gateway Load Sharing}: I implement real-time gateway load encoding in HELLO packet headers enabling bias-based routing and dynamic traffic distribution across multiple gateways.
+
+\item \textbf{Safety HELLO Mechanism}: I introduce forced transmission ceiling preventing Trickle over-suppression while ensuring fault detection and allowing exponential backoff during stable periods.
+
+\item \textbf{Proactive Health Monitoring}: I implement application-layer neighbor health tracking with immediate route removal upon fault detection, faster than LoRaMesher library baseline timeout.
+\end{enumerate}
+
+\section{Scope and Limitations}
+\label{sec:scope}
+
+To ensure the project is achievable, its scope is clearly defined with the following limitations:
+
+\begin{itemize}
+\item \textbf{Project Phases}: The research will focus exclusively on \textbf{Phase 1}, which encompasses the development of the core LoRa mesh network, the optimization of its routing protocol, and integration with a Raspberry Pi-based gateway node.
+
+\item \textbf{Future Work: Phase 2}, which involves integrating the developed mesh network with the AIT Hazemon sensor nodes, is explicitly defined as future work.
+\end{itemize}
+
+\begin{figure}[H]
+\caption{System Architecture for Phase 2 (Future Work)}
+\label{fig:phase2}
+\centering
+\includegraphics[width=0.8\textwidth]{figures/image3.jpg}
+\end{figure}
+
+Figure~\ref{fig:phase2} provides a clear visual of the long-term project vision, showing how the optimized LoRa mesh network developed in Phase 1 will eventually integrate with the AIT Hazemon sensor platform.
+
+\begin{itemize}
+\item \textbf{Hardware Constraints}: The experimental testbed will be limited to 3 to 5 Heltec LoRa 32 V3 nodes and 1 to 2 Raspberry Pi units, constraining the scale of network topology testing.
+
+\item \textbf{Regulatory Compliance}: All radio transmissions will strictly adhere to the \textbf{AS923} frequency plan for \textbf{Thailand} (923.0--923.4 MHz), which imposes constraints on transmission power (maximum 16 dBm EIRP) and duty cycle (1\% maximum airtime per hour). These regulatory limitations will be actively monitored and enforced throughout testing.
+
+\item \textbf{Network Mobility}: This research will primarily focus on static or low-mobility network scenarios. A detailed analysis of the protocol's performance under high-mobility conditions is considered outside the primary scope.
+
+\item \textbf{Power Consumption Analysis}: While power efficiency is inherently important for IoT deployments, a detailed power consumption characterization and optimization is beyond the scope of this proposal and may be addressed in future work.
+
+\item \textbf{Security Considerations}: The system's resilience to sophisticated security threats, including cryptographic analysis and attack mitigation strategies, is not a primary focus of this study. Basic message integrity through the existing LoRaMesher implementation will be maintained.
+
+\item \textbf{Environmental Factors}: Testing will be conducted primarily in controlled indoor environments. While some outdoor testing may be performed, comprehensive analysis of environmental factors (weather, seasonal variations, urban vs. rural deployment) is limited.
+
+\item \textbf{Library Stability}: This research assumes the LoRaMesher library provides a functionally stable baseline. Potential issues arising from library bugs or RadioLib compatibility problems, while documented if encountered, are not the primary research focus.
+\end{itemize}
+
+\section{Organization of the Study}
+
+This internship research is structured into six chapters. Chapter~\ref{chap:introduction} introduces the research domain, defines the problem, and outlines objectives and contributions. Chapter~\ref{chap:literature} presents a critical review of related literature, identifying the research gap this study addresses. Chapter~\ref{chap:methodology} details the methodology for design, implementation, and evaluation. Chapter~\ref{chap:results} presents empirical validation results from 20 hardware tests conducted during the research period. Chapter~\ref{chap:discussion} discusses findings in context of research objectives and limitations. Chapter~\ref{chap:conclusion} concludes with contributions summary, recommendations, and future work directions 

@@ -1,0 +1,7 @@
+- Figure 4.1 replaced with validated indoor PDRs; unmeasured bars marked N/A (P1/3 at 5/3 nodes, P3 at 3–4 nodes).
+- Figure 4.2 updated to 45 vs 31 HELLOs (31–33% reduction) from protocol3_validation_suite indoor run.
+- Figure 4.3 adjusted timeline: I_max reached ~17 minutes, 180 s safety annotated.
+- Figure 4.4 qualitative scoring; clarify in caption it is a qualitative comparison (overhead/multi-hop highest for P3, complexity highest for P3).
+- Figure 4.5 shows measured 3–5 node points and projected 10/20/50 node reductions; caption should note projection beyond 5 nodes.
+- Figure 5.1 remains projection; caption should state measured region is 3–5 nodes and 10/20/50 are modeled.
+- Hazemon images (image1–image9) are historical Phase 0 context; label as such or move to appendix if needed.

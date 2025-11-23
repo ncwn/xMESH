@@ -1,0 +1,175 @@
+% set document class as 'report'
+% set default font size as '12pt'
+\documentclass[12pt]{report}
+\usepackage[T1]{fontenc}
+\usepackage{amssymb}
+\usepackage{lmodern}
+\usepackage[utf8]{inputenc}
+
+% ====== for reference clickable ======
+\usepackage{hyperref}
+% ====== for graphics ======
+\usepackage{graphicx} % includegraphic
+\usepackage{placeins} % FloatBarrier
+\usepackage{float} % Force figure placement with [H]
+% ====== set Font Family ======
+\usepackage{newtxtext}\usepackage{newtxmath} % Font: Times (improved support)
+% ====== set margin here ======
+\usepackage{geometry}
+\geometry{
+ a4paper, % set A4 paper
+ right=1in, % set margin 1 inch
+ bottom=1in, % set margin 1 inch
+ top=1in, % set margin 1 inch
+ left=1in % set margin 1 inch (symmetric for centered layout)
+ }
+% ====== for styling Table of Content =====
+\usepackage{tocloft}
+% ====== for styling 'chapter' and 'section' ...
+\usepackage{titlesec}
+\usepackage{longtable}
+
+% Chapter
+\titleformat
+{\chapter} % command
+[display] % shape
+{\bfseries\large\center} % format
+{CHAPTER \thechapter} % label
+{0.6em} % sep
+{} % before-code
+[] % after-code
+% remove space above and set below 28pt space chapter
+\titlespacing*{\chapter}{0pt}{-35pt}{28pt}
+
+% Section (Heading, Level 2)
+\titleformat
+{\section} % command
+[hang] % shape
+{\bfseries} % format
+{\thesection} % label
+{0em} % sep
+{ } % before-code
+[] % after-code
+% add 1.5 line space above section and remove line space after it
+\titlespacing*{\section}{0pt}{1.6em}{0pt}
+
+% subSection (Heading, Level 3)
+\titleformat
+{\subsection} % command
+[hang] % shape
+{\bfseries \itshape} % format
+{\thesubsection} % label
+{0em} % sep
+{ } % before-code
+[] % after-code
+% add 0 line space above section and remove line space after it
+\titlespacing*{\subsection}{0pt}{0em}{0pt}
+
+% subsubSection (Heading, Level 4)
+\titleformat
+{\subsubsection} % command
+[runin] % shape
+{\bfseries} % format
+{\textit{\thesubsubsection}} % label
+{0em} % sep
+{ } % before-code
+[] % after-code
+% 0.5inch indent, 0 line space above, 1 space after header
+\titlespacing*{\subsubsection}{0.5in}{0em}{1ex}
+
+% ====== Indent ======
+% By default, the first paragraph is not indent - we need this package for indentation
+\usepackage{indentfirst}
+% ====== list + enum ======
+\usepackage{enumitem}
+% Set indent lenght for itemize and enumerate
+\setlist[itemize]{left=0.5in}
+\setlist[enumerate]{left=0.5in}
+% Remove separation between item
+\setlist{nosep}
+% ====== caption styling ======
+\usepackage{caption}
+\DeclareCaptionFormat{aitformat}{\textbf{#1} #2 \textit{#3}}
+% justification = RaggedRight : Caption start on the left
+% singlelinecheck = false     : Force caption to start on the left
+% labelsep = newline          : separate Table 1.1 and label
+\captionsetup{format = aitformat,
+              justification = RaggedRight,
+              singlelinecheck = false,
+              labelsep = newline}
+% Position captions above figures, below tables
+\captionsetup[figure]{position=top}
+\captionsetup[table]{position=bottom}
+              
+% ====== Special Math Symbol ======
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{upgreek}
+\usepackage{bm}
+
+% ====== Algorithm Pseudocode ======
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+% Use smaller font for algorithms to fit on page
+\SetAlFnt{\small}
+% Reduce vertical spacing in algorithms
+\SetAlgoSkip{smallskip}
+\SetAlgoInsideSkip{smallskip}
+
+% ====== References ======
+\usepackage[notocbib]{apacite}
+
+% ====== Document begins here ======
+\begin{document}
+    % Set counter depth up to subsubsection (heading, level 4)
+    \setcounter{secnumdepth}{3}
+    
+    % ====== include other section ======
+    \include{chapters/1-title}
+
+    % Show page numbering as 'roman'
+    \pagenumbering{roman}
+    % Start page counter as 2
+    \setcounter{page}{2}
+
+	\include{chapters/author_declaration}
+    \include{chapters/2-acknowledgment}
+    \include{chapters/3-abstract}
+    \include{chapters/4-tableOfContent}
+    \include{chapters/5-listOfTable}
+    \include{chapters/6-listOfFigure}
+    \include{chapters/abbreviations}
+    % Symbols section for mathematical notation
+    \include{chapters/symbols}
+    
+    % Start page counter as 1
+    \setcounter{page}{1}
+    % Show page numbering as 'arabic'
+    \pagenumbering{arabic}
+    \include{chapters/7-introduction}
+    \include{chapters/8-literatureReview}
+    \include{chapters/9-methodology}
+    \include{chapters/10-results}
+    \include{chapters/12-discussion}
+    \include{chapters/11-conclusion}
+
+    % ====== Reference part ======
+    % https://ctan.math.illinois.edu/macros/latex/contrib/apacite/apacite.pdf
+    % Include all references even without \cite{} commands
+    \nocite{*}
+    \addcontentsline{toc}{part}{REFERENCES}
+    % change page title
+    \renewcommand\bibname{REFERENCES}
+    \bibliographystyle{apacite}
+    \bibliography{references}
+
+    % ====== Appendices ======
+    \addtocontents{toc}{\bf{APPENDICES}}
+    \include{appendices/appendix-a}
+    \include{appendices/appendix-b}
+
+    % ====== Vita ======
+    \include{chapters/vita}
+    
+\end{document}
+
+
