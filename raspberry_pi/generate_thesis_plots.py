@@ -193,15 +193,15 @@ def plot_protocol_comparison():
                'Code\nComplexity', 'Multi-Hop\nSupport']
 
     # Normalized scores (0-10 scale, 10=best)
-    # PDR: P1=9.8, P2=9.3, P3=9.9
+    # PDR: P1=9.7, P2=9.3, P3=9.9
     # Overhead: P1=0 (baseline), P2=0 (baseline), P3=7 (31% reduction, scale 0-10)
-    # Fault: P1=0 (none), P2=5 (600s), P3=8 (378s)
+    # Fault: P1=0 (none), P2=4 (600s passive timeout - baseline), P3=8.5 (378s active detection)
     # Complexity: P1=10 (simple), P2=9, P3=4 (complex)
-    # Multi-hop: P1=7, P2=8, P3=6 (limited indoor validation)
+    # Multi-hop: P1=7, P2=8, P3=9.5 (highest - intelligent path selection, FWD=48)
 
-    p1_scores = [9.8, 0, 0, 10, 7]
-    p2_scores = [9.3, 0, 5, 9, 8]
-    p3_scores = [9.9, 7, 8, 4, 6]
+    p1_scores = [9.7, 0, 0, 10, 7]
+    p2_scores = [9.3, 0, 4, 9, 8]
+    p3_scores = [9.9, 7, 8.5, 4, 9.5]
 
     x = np.arange(len(metrics))
     width = 0.25
@@ -222,9 +222,12 @@ def plot_protocol_comparison():
     ax.grid(True, alpha=0.3, axis='y')
 
     plt.tight_layout()
-    output = 'proposal_docs/images/figure4_4_protocol_comparison.png'
-    plt.savefig(output, dpi=300, bbox_inches='tight')
-    print(f"✅ Plot 4 saved: {output}")
+    output_png = 'proposal_docs/images/figure4_4_protocol_comparison.png'
+    output_jpg = 'final_report/figures/figure4_4_protocol_comparison.jpg'
+    plt.savefig(output_png, dpi=300, bbox_inches='tight')
+    plt.savefig(output_jpg, dpi=300, bbox_inches='tight', format='jpg')
+    print(f"✅ Plot 4 saved: {output_png}")
+    print(f"✅ Plot 4 saved: {output_jpg}")
     plt.close()
 
 def plot_overhead_vs_nodes():

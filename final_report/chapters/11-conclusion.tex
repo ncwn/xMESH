@@ -144,7 +144,7 @@ This internship developed and validated three LoRa mesh routing protocols on com
 \begin{itemize}
 \item \textbf{Challenge:} Urban deployments with high node density, multiple gateway coverage overlap
 \item \textbf{Protocol 3 Advantage:} W5 load sharing distributes traffic across municipal gateway infrastructure, preventing single points of congestion. Validated 45/55 split (13/16 packets) enables near-optimal dual-gateway capacity utilization.
-\item \textbf{Scalability:} Projected 67-90\% overhead reduction in 10-50 node deployments keeps networks within 1\% duty cycle constraint
+\item \textbf{Scalability:} Two deployment scenarios projected: (1) Stable networks: 67-90\% overhead reduction (best case), (2) Mobile networks: 45-65\% overhead reduction (with 180s safety ceiling for fast fault detection). Both scenarios keep 10-50 node networks within 1\% duty cycle constraint
 \end{itemize}
 
 \subsection{Recommendations for AIT Campus Deployment}
@@ -167,9 +167,9 @@ This internship developed and validated three LoRa mesh routing protocols on com
 
 \textbf{Expected Performance:}
 \begin{itemize}
-\item 10-node deployment: Projected 67\% overhead reduction (extrapolated from 5-node 31\% baseline)
+\item 10-node deployment: Projected 45-67\% overhead reduction depending on safety HELLO configuration (stable networks: 67\%, mobile networks with 180s safety: 45\%)
 \item PDR target: $>$95\% achievable at $<$500m sensor spacing (indoor tests: 96.7-100\% validated)
-\item Fault tolerance: 378s detection enables automated alerts to facilities management
+\item Fault tolerance: 378s detection with safety HELLO enables automated alerts to facilities management
 \end{itemize}
 
 \subsection{Future Research Priorities}
