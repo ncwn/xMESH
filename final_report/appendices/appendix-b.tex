@@ -1,0 +1,67 @@
+\chapter*{APPENDIX B: STATISTICAL ANALYSIS METHODS}
+\addcontentsline{toc}{part}{APPENDIX B: STATISTICAL ANALYSIS METHODS}
+
+\section*{B.1 Paired t-Test for Performance Comparison}
+\phantomsection
+\addcontentsline{toc}{section}{B.1 Paired t-Test for Performance Comparison}
+
+The paired t-test will be used to compare mean performance metrics (PDR, latency) between the proposed protocol and each baseline. The test statistic is calculated as:
+
+\begin{equation}
+t = \frac{\bar{d}}{s_d / \sqrt{n}}
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $\bar{d}$ = mean of paired differences
+\item $s_d$ = standard deviation of paired differences
+\item $n$ = number of paired observations (3 repetitions)
+\end{itemize}
+
+Null hypothesis H$_0$: $\mu_{\text{proposed}} = \mu_{\text{baseline}}$ (no difference)
+
+Alternative hypothesis H$_1$: $\mu_{\text{proposed}} > \mu_{\text{baseline}}$ (improvement)
+
+Critical value: $t_{(n-1, \alpha=0.05)}$ for one-tailed test
+
+Decision: Reject H$_0$ if $t >$ critical value ($p < 0.05$)
+
+\section*{B.2 Effect Size (Cohen's d)}
+\addcontentsline{toc}{section}{B.2 Effect Size (Cohen's d)}
+
+To quantify the magnitude of improvement beyond statistical significance:
+
+\begin{equation}
+d = \frac{\mu_{\text{proposed}} - \mu_{\text{baseline}}}{\sigma_{\text{pooled}}}
+\end{equation}
+
+Where:
+
+\begin{equation}
+\sigma_{\text{pooled}} = \sqrt{\frac{(n_1-1)\sigma_1^2 + (n_2-1)\sigma_2^2}{n_1 + n_2 - 2}}
+\end{equation}
+
+Interpretation:
+\begin{itemize}
+\item $d < 0.2$: Small effect
+\item $0.2 \leq d < 0.5$: Small to medium effect
+\item $0.5 \leq d < 0.8$: Medium effect
+\item $d \geq 0.8$: Large effect
+\end{itemize}
+
+\section*{B.3 Confidence Interval Calculation}
+\addcontentsline{toc}{section}{B.3 Confidence Interval Calculation}
+
+95\% confidence interval for mean:
+
+\begin{equation}
+\text{CI} = \bar{x} \pm t_{\alpha/2, n-1} \cdot \frac{s}{\sqrt{n}}
+\end{equation}
+
+Where:
+\begin{itemize}
+\item $\bar{x}$ = sample mean
+\item $t_{\alpha/2, n-1}$ = t-distribution critical value ($\alpha=0.05$, df=$n-1$)
+\item $s$ = sample standard deviation
+\item $n$ = sample size (3 repetitions)
+\end{itemize}

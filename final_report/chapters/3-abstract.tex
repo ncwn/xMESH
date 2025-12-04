@@ -1,0 +1,26 @@
+% add to Table of content
+\addcontentsline{toc}{part}{ABSTRACT}
+
+% set 0 indentation
+\setlength{\parindent}{0pt}
+% set paragraph space = 1 space
+\setlength{\parskip}{1em}
+% set line space = 1.5
+\setlength{\baselineskip}{1.5em}
+
+\begin{center}
+  \fontsize{14}{17}\selectfont{\textbf{
+    ABSTRACT
+  }}
+\end{center}
+\vspace{2em}
+
+Low-Power Wide-Area Networks using standard LoRaWAN struggle with coverage gaps due to single-hop topology limitations. While mesh networking addresses this through multi-hop relay, existing LoRa mesh protocols face scalability barriers from broadcast-based routing and fixed-interval control overhead. Flooding protocols create exponential traffic violating duty cycle constraints, while table-driven protocols waste airtime with unnecessary periodic control packets regardless of network stability.
+
+This research implements a gateway-aware cost routing protocol combining three mechanisms: (1) Trickle adaptive scheduling reducing HELLO overhead through exponential backoff and redundancy suppression, (2) multi-metric cost function integrating signal quality and gateway load for path selection, and (3) proactive fault detection with safety mechanisms preventing over-suppression while enabling rapid convergence.
+
+The research makes six novel contributions: (1) first complete Trickle adaptive scheduler integrated with LoRaMesher firmware achieving 85-90\% suppression efficiency, (2) discovery that Trickle operates as local per-node decisions rather than network-wide cascades, limiting fault impact regionally, (3) zero-overhead ETX tracking via sequence-gap detection eliminating ACK overhead, (4) active gateway load sharing with real-time load encoding enabling dynamic traffic distribution, (5) safety HELLO mechanism preventing over-suppression while enabling rapid fault detection, and (6) proactive health monitoring reducing fault detection time versus library baseline.
+
+Hardware validation on ESP32-S3 nodes demonstrates approximately 30\% HELLO overhead reduction, 96-100\% packet delivery ratio in indoor scenarios, and successful dual-gateway load distribution. Multi-hop routing capability is validated with relay nodes forwarding traffic and cost-based routing selecting quality-aware paths unavailable in hop-count protocols.
+
+The adaptive overhead reduction and fault-tolerant design enable scalable LoRa mesh deployments for resource-constrained applications including agricultural monitoring, industrial IoT, and environmental sensing requiring duty cycle compliance and network resilience. The local fault isolation discovery and zero-overhead ETX tracking represent fundamental contributions to LPWAN mesh protocol research. 
