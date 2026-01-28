@@ -1,5 +1,8 @@
 #include "xmesh/TrickleScheduler.h"
 #include <Arduino.h>
+#include <esp_log.h>
+
+static const char* TAG = "TRICKLE";
 
 namespace xmesh {
 
@@ -7,10 +10,23 @@ TrickleScheduler::TrickleScheduler(uint32_t imin, uint32_t imax, uint8_t redunda
     : I_min(imin), I_max(imax), I_current(imin), k(redundancy),
       intervalStart(0), nextTransmit(0), consistentHeard(0),
       enabled(enable), transmitCount(0), suppressCount(0),
-      state(IDLE) {}
+      state(IDLE) {
+    if (imin > imax) {
+        ESP_LOGE(TAG, "Invalid interval config: I_min (%lu) > I_max (%lu)", imin, imax);
+    }
+    if (imin == 0 || imax == 0) {
+        ESP_LOGE(TAG, "Invalid interval config: I_min or I_max is zero");
+    }
+    if (k == 0) {
+        ESP_LOGW(TAG, "Redundancy k=0 - suppression disabled");
+    }
+}
 
 void TrickleScheduler::start() {
-    if (!enabled) return;
+    if (!enabled) {
+        ESP_LOGW(TAG, "Trickle disabled - start() ignored");
+        return;
+    }
     state = ACTIVE;
     I_current = I_min;
     reset();
@@ -56,6 +72,11 @@ bool TrickleScheduler::shouldTransmit() {
     if (!enabled) return true;
     
     uint32_t now = millis();
+    
+    if (state == IDLE) {
+        ESP_LOGW(TAG, "shouldTransmit() called in IDLE state");
+        return false;
+    }
     
     if (intervalExpired()) {
         doubleInterval();

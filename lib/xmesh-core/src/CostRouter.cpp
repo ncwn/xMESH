@@ -1,5 +1,8 @@
 #include "xmesh/CostRouter.h"
 #include <algorithm>
+#include <esp_log.h>
+
+static const char* TAG = "COST";
 
 namespace xmesh {
 
@@ -15,7 +18,15 @@ CostRouter::CostRouter(float w1, float w2, float w3, float w4, float w5)
       w2_rssi(w2),
       w3_snr(w3),
       w4_etx(w4),
-      w5_gatewayBias(w5) {}
+      w5_gatewayBias(w5) {
+    if (w1 < 0.0f || w2 < 0.0f || w3 < 0.0f || w4 < 0.0f || w5 < 0.0f) {
+        ESP_LOGE(TAG, "Invalid weight configuration: negative weights detected (w1=%.2f, w2=%.2f, w3=%.2f, w4=%.2f, w5=%.2f)", 
+                 w1, w2, w3, w4, w5);
+    }
+    if (w1 + w2 + w3 + w4 + w5 == 0.0f) {
+        ESP_LOGW(TAG, "All weights are zero - cost function will always return 0");
+    }
+}
 
 float CostRouter::normalizeRSSI(int16_t rssi) {
     if (rssi >= RSSI_MAX) return 1.0f;
@@ -31,6 +42,18 @@ float CostRouter::normalizeSNR(int8_t snr) {
 
 float CostRouter::calculateCost(uint8_t hops, uint16_t nextHop, uint16_t destAddr,
                                 int16_t rssi, int8_t snr, float etx, float gatewayBias) const {
+    if (rssi < -150 || rssi > 0) {
+        ESP_LOGW(TAG, "Suspicious RSSI value: %d dBm (node %04X)", rssi, nextHop);
+    }
+    
+    if (snr < -20 || snr > 20) {
+        ESP_LOGW(TAG, "Suspicious SNR value: %d dB (node %04X)", snr, nextHop);
+    }
+    
+    if (etx < 1.0f || etx > 10.0f) {
+        ESP_LOGW(TAG, "ETX out of expected range: %.2f (node %04X)", etx, nextHop);
+    }
+    
     float cost = 0.0f;
     
     cost += w1_hopCount * hops;

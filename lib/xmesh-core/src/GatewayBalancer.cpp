@@ -1,6 +1,11 @@
 #include "xmesh/GatewayBalancer.h"
 #include <Arduino.h>
 #include <algorithm>
+#include <esp_log.h>
+#include <esp_heap_caps.h>
+
+static const char* TAG = "GATEWAY";
+constexpr size_t HEAP_WARNING_THRESHOLD = 15360;
 
 namespace xmesh {
 
@@ -17,6 +22,13 @@ GatewayBalancer::~GatewayBalancer() {
 }
 
 uint8_t GatewayBalancer::encodeGatewayLoad(float packetsPerMinute) {
+    if (packetsPerMinute < 0.0f) {
+        ESP_LOGW(TAG, "Negative packets per minute: %.2f, clamping to 0", packetsPerMinute);
+        packetsPerMinute = 0.0f;
+    }
+    if (packetsPerMinute > 254.0f) {
+        ESP_LOGW(TAG, "Excessive load: %.2f packets/min, clamping to 254", packetsPerMinute);
+    }
     float clamped = constrain(packetsPerMinute, 0.0f, 254.0f);
     return static_cast<uint8_t>(clamped + 0.5f);
 }
@@ -113,9 +125,15 @@ uint8_t GatewayBalancer::monitorNeighborHealth() {
     uint32_t now = millis();
     uint8_t failedCount = 0;
 
+    size_t freeHeap = esp_get_free_heap_size();
+    if (freeHeap < HEAP_WARNING_THRESHOLD) {
+        ESP_LOGW(TAG, "Low heap memory: %d bytes free (threshold: %d)", freeHeap, HEAP_WARNING_THRESHOLD);
+    }
+
     if (now - lastStatusLog > STATUS_LOG_INTERVAL_MS) {
         lastStatusLog = now;
         Serial.printf("\n[HEALTH] ==== Neighbor Health Status (Tracking: %d neighbors) ====\n", numNeighbors);
+        Serial.printf("[HEALTH] Free heap: %d bytes\n", freeHeap);
         for (uint8_t i = 0; i < numNeighbors; i++) {
             if (neighbors[i].address == 0) continue;
             uint32_t silence = now - neighbors[i].lastHeard;
@@ -191,6 +209,7 @@ int8_t GatewayBalancer::findNeighborIndex(uint16_t addr) const {
 
 bool GatewayBalancer::addNeighbor(uint16_t addr) {
     if (numNeighbors >= maxNeighbors) {
+        ESP_LOGE(TAG, "Cannot add neighbor %04X: max capacity (%d) reached", addr, maxNeighbors);
         return false;
     }
 

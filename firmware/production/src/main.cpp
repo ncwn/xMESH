@@ -1,11 +1,17 @@
 #include <Arduino.h>
 #include "LoraMesher.h"
 #include "config.h"
+#include <esp_task_wdt.h>
+#include <esp_log.h>
 
 #include <xmesh/TrickleScheduler.h>
 #include <xmesh/CostRouter.h>
 #include <xmesh/ETXTracker.h>
 #include <xmesh/GatewayBalancer.h>
+
+static const char* TAG = "MAIN";
+
+constexpr uint32_t WATCHDOG_TIMEOUT_SEC = 30;
 
 xmesh::TrickleScheduler trickle(TRICKLE_I_MIN, TRICKLE_I_MAX, TRICKLE_K, TRICKLE_ENABLED);
 xmesh::CostRouter costRouter(W1_HOP_COUNT, W2_RSSI, W3_SNR, W4_ETX, W5_GATEWAY_BIAS);
@@ -84,6 +90,11 @@ void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(1000);
     
+    ESP_LOGI(TAG, "Initializing watchdog (timeout: %lu seconds)", WATCHDOG_TIMEOUT_SEC);
+    esp_task_wdt_init(WATCHDOG_TIMEOUT_SEC, true);
+    esp_task_wdt_add(NULL);
+    ESP_LOGI(TAG, "Watchdog initialized and added to main task");
+    
     Serial.printf("\n\n");
     Serial.printf("====================================\n");
     Serial.printf("  xMESH Production Firmware\n");
@@ -115,9 +126,12 @@ void setup() {
     Serial.printf("[LoRaMesher] Radio started\n");
     
     Serial.printf("\n[xMESH] Initialization complete. Entering main loop...\n\n");
+    ESP_LOGI(TAG, "System initialized successfully");
 }
 
 void loop() {
+    esp_task_wdt_reset();
+    
     if (trickle.shouldTransmit()) {
         Serial.printf("[Trickle] Transmitting HELLO (interval: %.1fs, TX: %lu, Suppressed: %lu)\n",
                      trickle.getCurrentIntervalSec(),
