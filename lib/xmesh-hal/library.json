@@ -1,0 +1,29 @@
+{
+  "name": "xmesh-hal",
+  "version": "0.1.0",
+  "description": "Hardware abstraction layer for xMESH mesh network (Heltec V3 platform)",
+  "keywords": ["mesh", "lora", "heltec", "hal", "display", "sensors"],
+  "authors": [
+    {
+      "name": "xMESH Project"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "dependencies": {
+    "adafruit/Adafruit GFX Library": "^1.11.9",
+    "adafruit/Adafruit SSD1306": "^2.5.9"
+  },
+  "build": {
+    "flags": [
+      "-I include"
+    ]
+  },
+  "export": {
+    "include": [
+      "include/*",
+      "src/*"
+    ]
+  }
+}
