@@ -1,0 +1,25 @@
+{
+  "name": "xmesh-ota",
+  "version": "1.0.0",
+  "description": "Over-The-Air update manager for xMESH using ESP-IDF native OTA",
+  "keywords": ["ota", "firmware", "update", "esp32", "xmesh"],
+  "authors": [
+    {
+      "name": "xMESH Team"
+    }
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xmesh/xmesh.git"
+  },
+  "license": "MIT",
+  "frameworks": ["arduino", "espidf"],
+  "platforms": ["espressif32"],
+  "dependencies": {},
+  "build": {
+    "flags": [
+      "-I include"
+    ],
+    "libArchive": false
+  }
+}
