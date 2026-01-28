@@ -32,6 +32,25 @@ pio device monitor
 - **Gateway Load Balancing**: Actively shares traffic across multiple gateways to prevent bottlenecks.
 - **OTA Updates**: Native ESP-IDF Over-The-Air update integration for remote maintenance.
 
+## Over-The-Air (OTA) Updates
+
+xMESH supports WiFi-based OTA updates for gateway nodes using the ArduinoOTA protocol. This allows for remote firmware updates without physical access to the device.
+
+### Update Procedure
+1. **Connect to WiFi**: Ensure the gateway node is connected to a WiFi network.
+2. **Trigger Update**: Use the PlatformIO OTA upload command or an ArduinoOTA-compatible tool:
+   ```bash
+   # Upload firmware via WiFi (replace <IP_ADDRESS> with gateway IP)
+   pio run -t upload --upload-port <IP_ADDRESS>
+   ```
+3. **Automatic Verification**: On first boot after an update, xMESH tracks the boot success. If the firmware crashes or fails to boot 3 times consecutively, it will automatically roll back to the previous known-good version.
+4. **Finalization**: Once the app successfully initializes and connects to the network, it marks itself as "valid," confirming the update was successful.
+
+### Safety Mechanisms
+- **Dual Partitioning**: Firmware is stored in two independent slots (`app0`, `app1`). The system always keeps the previous version available for rollback.
+- **Boot Counter**: A persistent counter in NVS tracks consecutive boot failures.
+- **Rollback**: Triggered automatically by the ESP-IDF partition manager if the new image is unstable.
+
 ## Repository Structure
 
 - `lib/xmesh-core/`: Core routing logic (Trickle, Cost Function, ETX).

@@ -43,3 +43,25 @@ All builds use PlatformIO (PIO).
 - **Radio**: SX1262 LoRa
 - **Display**: 0.96" OLED (SSD1306)
 - **Frequency**: Region-specific (default AS923/EU868)
+
+## OTA Architecture
+
+The xMESH OTA system combines the simplicity of ArduinoOTA with the robustness of ESP-IDF native partition management.
+
+### Implementation Details
+- **Trigger**: WiFi-based via `ArduinoOTA` library.
+- **Partition Scheme**: Dual-slot OTA (4MB Flash):
+  - `otadata`: Stores OTA status and boot sequence.
+  - `app0`/`app1`: Two 1.9MB application slots.
+  - `nvs`: Stores boot failure counter.
+- **Boot Counter Logic**:
+  - Incremented in `OTAManager::begin()` before marking the app as valid.
+  - Reset to `0` in `OTAManager::markAppValid()` after successful initialization.
+  - If `fail_count >= 3`, `esp_ota_mark_app_invalid_rollback_and_reboot()` is called.
+- **ESP-IDF Integration**:
+  - `esp_ota_begin()`/`esp_ota_end()` handle partition writing.
+  - `esp_ota_set_boot_partition()` updates the boot record.
+  - `esp_ota_mark_app_valid_cancel_rollback()` secures the new image.
+
+### Build Flags
+OTA requires the specific `partitions.csv` defined in the production firmware directory. Ensure `board_build.partitions` is set correctly in `platformio.ini`.
