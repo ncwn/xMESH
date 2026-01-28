@@ -1,0 +1,205 @@
+#include "xmesh/GatewayBalancer.h"
+#include <Arduino.h>
+#include <algorithm>
+
+namespace xmesh {
+
+GatewayBalancer::GatewayBalancer(uint8_t maxNeighbors)
+    : isGatewayNode(false),
+      maxNeighbors(maxNeighbors),
+      numNeighbors(0),
+      lastStatusLog(0) {
+    neighbors = new NeighborHealth[maxNeighbors];
+}
+
+GatewayBalancer::~GatewayBalancer() {
+    delete[] neighbors;
+}
+
+uint8_t GatewayBalancer::encodeGatewayLoad(float packetsPerMinute) {
+    float clamped = constrain(packetsPerMinute, 0.0f, 254.0f);
+    return static_cast<uint8_t>(clamped + 0.5f);
+}
+
+float GatewayBalancer::decodeGatewayLoad(uint8_t encodedLoad) {
+    if (encodedLoad == 255) {
+        return 0.0f;
+    }
+    return static_cast<float>(encodedLoad);
+}
+
+void GatewayBalancer::recordGatewayLoadSample() {
+    if (!isGatewayNode) {
+        return;
+    }
+    localLoadState.packetsSinceLastSample++;
+}
+
+uint8_t GatewayBalancer::sampleLocalGatewayLoadForHello() {
+    if (!isGatewayNode) {
+        return 255;
+    }
+
+    uint32_t now = millis();
+    if (localLoadState.lastSampleTimestamp == 0) {
+        localLoadState.lastSampleTimestamp = now;
+        localLoadState.lastEncodedLoad = 0;
+        localLoadState.packetsSinceLastSample = 0;
+        return 0;
+    }
+
+    uint32_t elapsed = now - localLoadState.lastSampleTimestamp;
+    if (elapsed < MIN_GATEWAY_LOAD_WINDOW_MS) {
+        elapsed = MIN_GATEWAY_LOAD_WINDOW_MS;
+    }
+
+    float packetsPerMinute = 0.0f;
+    if (elapsed > 0) {
+        packetsPerMinute = (localLoadState.packetsSinceLastSample * 60000.0f) / elapsed;
+    }
+
+    uint8_t encoded = encodeGatewayLoad(packetsPerMinute);
+    localLoadState.packetsSinceLastSample = 0;
+    localLoadState.lastSampleTimestamp = now;
+    localLoadState.lastEncodedLoad = encoded;
+    return encoded;
+}
+
+uint8_t GatewayBalancer::peekLocalGatewayLoad() const {
+    return localLoadState.lastEncodedLoad;
+}
+
+float GatewayBalancer::getGatewayBias(uint16_t gatewayAddr, uint8_t encodedLoad) const {
+    if (encodedLoad == 255) {
+        return 0.0f;
+    }
+    
+    float load = decodeGatewayLoad(encodedLoad);
+    return load * 0.01f;
+}
+
+void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
+    uint32_t now = millis();
+
+    int8_t idx = findNeighborIndex(addr);
+    if (idx >= 0) {
+        uint32_t silence = now - neighbors[idx].lastHeard;
+
+        if (neighbors[idx].failureFlagged) {
+            Serial.printf("[HEALTH] Neighbor %04X: RECOVERED after %lus offline\n",
+                         addr, silence/1000);
+        }
+
+        neighbors[idx].lastHeard = now;
+        neighbors[idx].missedHellos = 0;
+        neighbors[idx].failureFlagged = false;
+
+        Serial.printf("[HEALTH] Neighbor %04X: Heartbeat (silence: %lus, status: HEALTHY)\n",
+                     addr, silence/1000);
+        return;
+    }
+
+    if (addNeighbor(addr)) {
+        neighbors[numNeighbors - 1].lastHeard = now;
+        Serial.printf("[HEALTH] NEW neighbor %04X detected (total neighbors: %d)\n",
+                     addr, numNeighbors);
+    } else {
+        Serial.printf("[HEALTH] WARNING: Cannot track neighbor %04X (max %d reached)\n", 
+                     addr, maxNeighbors);
+    }
+}
+
+uint8_t GatewayBalancer::monitorNeighborHealth() {
+    uint32_t now = millis();
+    uint8_t failedCount = 0;
+
+    if (now - lastStatusLog > STATUS_LOG_INTERVAL_MS) {
+        lastStatusLog = now;
+        Serial.printf("\n[HEALTH] ==== Neighbor Health Status (Tracking: %d neighbors) ====\n", numNeighbors);
+        for (uint8_t i = 0; i < numNeighbors; i++) {
+            if (neighbors[i].address == 0) continue;
+            uint32_t silence = now - neighbors[i].lastHeard;
+            Serial.printf("[HEALTH]   %04X: silence=%lus, missed=%d, status=%s\n",
+                         neighbors[i].address, silence/1000,
+                         neighbors[i].missedHellos,
+                         neighbors[i].failureFlagged ? "FAILED" : "HEALTHY");
+        }
+        Serial.println("[HEALTH] =========================================================\n");
+    }
+
+    for (uint8_t i = 0; i < numNeighbors; i++) {
+        NeighborHealth* n = &neighbors[i];
+        if (n->address == 0 || n->lastHeard == 0) continue;
+
+        uint32_t silence = now - n->lastHeard;
+
+        if (silence > WARNING_THRESHOLD_MS && silence < DETECTION_THRESHOLD_MS && n->missedHellos == 0) {
+            n->missedHellos = 1;
+            Serial.printf("[HEALTH] Neighbor %04X: WARNING - %lus silence (miss 1 HELLO)\n",
+                         n->address, silence/1000);
+            Serial.printf("[HEALTH]   Detection threshold: %lus remaining until FAULT\n",
+                         (DETECTION_THRESHOLD_MS - silence)/1000);
+        }
+
+        if (silence > DETECTION_THRESHOLD_MS && !n->failureFlagged) {
+            n->missedHellos = 2;
+            n->failureFlagged = true;
+            failedCount++;
+
+            Serial.printf("\n[FAULT] ========================================\n");
+            Serial.printf("[FAULT] Neighbor %04X: FAILURE DETECTED\n", n->address);
+            Serial.printf("[FAULT]   Silence duration: %lus (%lu min %lu sec)\n",
+                         silence/1000, silence/60000, (silence%60000)/1000);
+            Serial.printf("[FAULT]   Missed HELLOs: %d (expected every 180s)\n", n->missedHellos);
+            Serial.printf("[FAULT] ========================================\n\n");
+
+            Serial.println("[RECOVERY] Node failure detected - application should remove failed route");
+            Serial.printf("[RECOVERY] Failed neighbor: %04X\n", n->address);
+            Serial.printf("[RECOVERY] ========================================\n\n");
+        }
+    }
+
+    return failedCount;
+}
+
+bool GatewayBalancer::isNeighborFailed(uint16_t addr) const {
+    int8_t idx = findNeighborIndex(addr);
+    if (idx >= 0) {
+        return neighbors[idx].failureFlagged;
+    }
+    return false;
+}
+
+bool GatewayBalancer::getNeighborStats(uint16_t addr, uint8_t& missedHellos, uint32_t& silenceDuration) const {
+    int8_t idx = findNeighborIndex(addr);
+    if (idx >= 0) {
+        missedHellos = neighbors[idx].missedHellos;
+        silenceDuration = millis() - neighbors[idx].lastHeard;
+        return true;
+    }
+    return false;
+}
+
+int8_t GatewayBalancer::findNeighborIndex(uint16_t addr) const {
+    for (uint8_t i = 0; i < numNeighbors; i++) {
+        if (neighbors[i].address == addr) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+bool GatewayBalancer::addNeighbor(uint16_t addr) {
+    if (numNeighbors >= maxNeighbors) {
+        return false;
+    }
+
+    neighbors[numNeighbors].address = addr;
+    neighbors[numNeighbors].lastHeard = 0;
+    neighbors[numNeighbors].missedHellos = 0;
+    neighbors[numNeighbors].failureFlagged = false;
+    numNeighbors++;
+    return true;
+}
+
+} // namespace xmesh
