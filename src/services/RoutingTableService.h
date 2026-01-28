@@ -19,6 +19,16 @@
  * @brief Routing Table Service
  *
  */
+
+// Custom callback types for xMESH extensions
+// Cost calculation callback: Returns custom cost for route selection
+// Parameters: hops (metric), nextHop (via), destAddr (route address)
+typedef float (*CostCalculationCallback)(uint8_t, uint16_t, uint16_t);
+
+// HELLO reception callback: Notifies when HELLO packets are received
+// Parameters: srcAddr (address of node that sent HELLO)
+typedef void (*HelloReceivedCallback)(uint16_t);
+
 class RoutingTableService {
 public:
 
@@ -29,10 +39,36 @@ public:
 	static LM_LinkedList<RouteNode>* routingTableList;
 
 	/**
+	 * @brief Cost calculation callback (optional)
+	 * If set, routing decisions use custom cost instead of hop-count
+	 */
+	static CostCalculationCallback costCallback;
+
+	/**
+	 * @brief HELLO reception callback (optional)
+	 * If set, notifies when HELLO packets are received (for Trickle suppression)
+	 */
+	static HelloReceivedCallback helloCallback;
+
+	/**
 	 * @brief Prints the actual routing table in the log
 	 *
 	 */
 	static void printRoutingTable();
+
+	/**
+	 * @brief Set cost calculation callback
+	 *
+	 * @param callback Function pointer to cost calculation function
+	 */
+	static void setCostCalculationCallback(CostCalculationCallback callback);
+
+	/**
+	 * @brief Set HELLO reception callback
+	 *
+	 * @param callback Function pointer to HELLO reception handler
+	 */
+	static void setHelloReceivedCallback(HelloReceivedCallback callback);
 
 	/**
 	 * @brief Get the All Network Nodes that are inside the routing table

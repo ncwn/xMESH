@@ -89,6 +89,10 @@ void RoutingTableService::processRoute(RoutePacket* p, int8_t receivedSNR) {
     }
 
     printRoutingTable();
+
+    if (helloCallback != nullptr) {
+        helloCallback(p->src);
+    }
 }
 
 void RoutingTableService::resetReceiveSNRRoutePacket(uint16_t src, int8_t receivedSNR) {
@@ -111,15 +115,28 @@ void RoutingTableService::processRoute(uint16_t via, NetworkNode* node) {
             return;
         }
 
-        //Update the metric and restart timeout if needed
-        if (node->metric < rNode->networkNode.metric) {
+        bool shouldUpdateRoute = false;
+
+        if (costCallback != nullptr) {
+            float newCost = costCallback(node->metric, via, node->address);
+            float currentCost = costCallback(rNode->networkNode.metric, rNode->via, node->address);
+
+            if (newCost < currentCost * 0.85f) {
+                shouldUpdateRoute = true;
+                ESP_LOGI(LM_TAG, "Better route for %X via %X: cost %.2f < %.2f, metric %d", 
+                        node->address, via, newCost, currentCost, node->metric);
+            }
+        } else {
+            shouldUpdateRoute = (node->metric < rNode->networkNode.metric);
+        }
+
+        if (shouldUpdateRoute) {
             rNode->networkNode.metric = node->metric;
             rNode->via = via;
             resetTimeoutRoutingNode(rNode);
             ESP_LOGI(LM_TAG, "Found better route for %X via %X metric %d", node->address, via, node->metric);
         }
         else if (node->metric == rNode->networkNode.metric) {
-            //Reset the timeout, only when the metric is the same as the actual route.
             resetTimeoutRoutingNode(rNode);
         }
 
@@ -265,3 +282,19 @@ uint8_t RoutingTableService::calculateMaximumMetricOfRoutingTable() {
 }
 
 LM_LinkedList<RouteNode>* RoutingTableService::routingTableList = new LM_LinkedList<RouteNode>();
+CostCalculationCallback RoutingTableService::costCallback = nullptr;
+HelloReceivedCallback RoutingTableService::helloCallback = nullptr;
+
+void RoutingTableService::setCostCalculationCallback(CostCalculationCallback callback) {
+    costCallback = callback;
+    if (callback != nullptr) {
+        ESP_LOGI(LM_TAG, "Cost-based routing enabled");
+    }
+}
+
+void RoutingTableService::setHelloReceivedCallback(HelloReceivedCallback callback) {
+    helloCallback = callback;
+    if (callback != nullptr) {
+        ESP_LOGI(LM_TAG, "HELLO reception callback enabled (Trickle suppression)");
+    }
+}
