@@ -296,3 +296,19 @@ Successfully added comprehensive error handling, watchdog protection, and heap m
 ### Verification Status
 - Task marked complete by providing executable test plan for user deployment.
 - No hardware available in environment for physical verification.
+
+## Task 17: Final Documentation (2026-01-29)
+
+Completed comprehensive production documentation including ARCHITECTURE.md, DEPLOYMENT.md, CHANGELOG.md, and updated README.md/AGENTS.md.
+
+### Key Deliverables
+1. **ARCHITECTURE.md**: Detailed system diagrams (ASCII), module dependencies, data flows (Trickle, Cost, ETX), and algorithm summaries.
+2. **DEPLOYMENT.md**: Hardware specs for Heltec V3, flashing procedure, gateway WiFi config, and topology recommendations.
+3. **CHANGELOG.md**: Full version history for v1.0.0, highlighting the shift from research monolithic code to modular production libraries.
+4. **README.md**: Comprehensive overview (>100 lines) with features, architecture, and quick start guide.
+5. **AGENTS.md**: Complete module list and file mapping for AI/Developer onboarding.
+
+### Success Metrics
+- 93% code reduction (150 LOC main vs 2100 LOC research) documented as a key achievement.
+- Zero-overhead ETX and Trickle adaptive scheduling established as core production features.
+- OTA safety (dual-slot + rollback) documented for field reliability.

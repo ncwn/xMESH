@@ -8,60 +8,67 @@ xMESH is a professional-grade LoRa mesh network designed for production IoT depl
 - **Reliability**: Multi-metric cost routing and zero-overhead ETX tracking.
 - **Production-Ready**: Clean separation of concerns (Core, HAL, OTA) and minimized main firmware logic.
 
-## Architecture
-The project is structured into modular libraries to ensure hardware portability and algorithmic stability.
+## Module List & File Locations
 
-- **`lib/xmesh-core/`**: Implementation of the Protocol 3 routing stack.
-  - `CostRouter`: Multi-metric path selection (RSSI, SNR, ETX, Hops, Gateway Bias).
-  - `TrickleScheduler`: RFC 6206-inspired adaptive HELLO scheduling.
-  - `ETXTracker`: Zero-overhead Link Quality Estimation (LQE) via sequence-gap detection.
-  - `GatewayBalancer`: Active load sharing across multiple network gateways.
-- **`lib/xmesh-hal/`**: Hardware Abstraction Layer for Heltec V3.
-  - SSD1306 OLED display drivers.
-  - Environmental sensor interfaces.
-- **`lib/xmesh-ota/`**: ESP-IDF native Over-The-Air update integration.
-- **`firmware/production/`**: Reference implementation (~200 LOC) for field deployment.
+### 1. xmesh-core (`lib/xmesh-core/`)
+Implementation of the Protocol 3 routing stack.
+- `CostRouter.h/cpp`: Multi-metric path selection logic.
+- `TrickleScheduler.h/cpp`: RFC 6206 adaptive HELLO scheduling.
+- `ETXTracker.h/cpp`: Zero-overhead Link Quality Estimation (LQE).
+- `GatewayBalancer.h/cpp`: Active load sharing and neighbor health monitoring.
+- `MeshConfig.h`: Routing parameter definitions.
 
-## Build Commands
-All builds use PlatformIO (PIO).
+### 2. xmesh-hal (`lib/xmesh-hal/`)
+Hardware Abstraction Layer for Heltec WiFi LoRa 32 V3.
+- `Display.h/cpp`: SSD1306 OLED drivers and status rendering.
+- `Sensors.h/cpp`: Environmental sensor interfaces (PMS7003, GPS).
 
-| Task | Command |
-|------|---------|
-| Build Firmware | `pio run` |
-| Upload to Device | `pio run -t upload` |
-| Serial Monitor | `pio device monitor` |
-| Clean Build | `pio run -t clean` |
+### 3. xmesh-ota (`lib/xmesh-ota/`)
+ESP-IDF native Over-The-Air update integration.
+- `OTAManager.h/cpp`: WiFi-based update lifecycle management.
+- `VersionControl.h/cpp`: Semantic versioning utilities.
+
+### 4. Production Firmware (`firmware/production/`)
+Reference implementation for field deployment.
+- `main.cpp`: System entry point and callback wiring.
+- `config.h`: Production configuration constants.
+- `platformio.ini`: Build configuration and environment flags.
+- `partitions.csv`: Custom partition scheme for OTA support.
+
+## Common Development Tasks
+
+| Task | Command / Instructions |
+|------|------------------------|
+| **Build** | `pio run` in `firmware/production` |
+| **Flash (USB)** | `pio run -t upload` |
+| **Monitor** | `pio device monitor --baud 115200` |
+| **Update (OTA)**| `pio run -t upload --upload-port <IP_ADDRESS>` |
+| **Clean** | `pio run -t clean` |
+| **Log Search** | `grep -r "ESP_LOGE" .` to find error logs |
 
 ## Key Conventions
-1. **Algorithm Integrity**: Do NOT tune or modify the core routing algorithms (Trickle, Cost Function) without explicit instruction. These are validated against research baselines.
-2. **Modular HAL**: Hardware-specific logic belongs in `xmesh-hal`. `xmesh-core` must remain hardware-agnostic.
-3. **No Interactive Input**: All configuration should be handled via `platformio.ini` build flags or header constants.
-4. **Error Handling**: Use the built-in logging system; avoid raw `printf` in library code.
 
-## Hardware Specification
-- **MCU**: ESP32-S3 (Heltec WiFi LoRa 32 V3)
-- **Radio**: SX1262 LoRa
-- **Display**: 0.96" OLED (SSD1306)
-- **Frequency**: Region-specific (default AS923/EU868)
+1. **Algorithm Integrity**: Do NOT tune or modify core routing algorithms (Trickle, Cost Function) without explicit instruction.
+2. **Modular HAL**: Hardware-specific logic belongs in `xmesh-hal`. `xmesh-core` MUST remain hardware-agnostic.
+3. **No Interactive Input**: Use `platformio.ini` build flags or `config.h` constants for all configuration.
+4. **Error Handling**: Use `ESP_LOGX` macros for all logging. Avoid raw `printf`.
+5. **Namespaces**: All code must reside within the `xmesh` namespace. HAL code in `xmesh::hal`.
 
-## OTA Architecture
+## Architecture & Data Flows
 
-The xMESH OTA system combines the simplicity of ArduinoOTA with the robustness of ESP-IDF native partition management.
+Detailed documentation of system architecture, data flows (HELLO, Cost, ETX), and algorithm summaries can be found in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-### Implementation Details
-- **Trigger**: WiFi-based via `ArduinoOTA` library.
-- **Partition Scheme**: Dual-slot OTA (4MB Flash):
-  - `otadata`: Stores OTA status and boot sequence.
-  - `app0`/`app1`: Two 1.9MB application slots.
-  - `nvs`: Stores boot failure counter.
-- **Boot Counter Logic**:
-  - Incremented in `OTAManager::begin()` before marking the app as valid.
-  - Reset to `0` in `OTAManager::markAppValid()` after successful initialization.
-  - If `fail_count >= 3`, `esp_ota_mark_app_invalid_rollback_and_reboot()` is called.
-- **ESP-IDF Integration**:
-  - `esp_ota_begin()`/`esp_ota_end()` handle partition writing.
-  - `esp_ota_set_boot_partition()` updates the boot record.
-  - `esp_ota_mark_app_valid_cancel_rollback()` secures the new image.
+## Deployment & Maintenance
 
-### Build Flags
-OTA requires the specific `partitions.csv` defined in the production firmware directory. Ensure `board_build.partitions` is set correctly in `platformio.ini`.
+Step-by-step flashing procedures, gateway configuration, and troubleshooting are documented in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## OTA Architecture & Safety
+
+- **Trigger**: WiFi-based via `ArduinoOTA`.
+- **Partition Scheme**: Dual-slot OTA (4MB Flash): `app0`/`app1` (1.9MB each).
+- **Rollback**: Automatic rollback triggered after 3 consecutive boot failures (tracked in NVS).
+- **Verification**: App must call `OTAManager::markAppValid()` to reset failure counter.
+
+## Build Flags
+Ensure `board_build.partitions = partitions.csv` is set in `platformio.ini` for OTA support.
+Use `-DLM_GOD_MODE` to enable advanced xMESH features in LoRaMesher.
