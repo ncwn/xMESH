@@ -1,0 +1,101 @@
+/**
+ * @file config.h
+ * @brief xMESH Production Firmware Configuration
+ * 
+ * This file contains all configurable parameters for the xMESH routing stack.
+ * Values are ported from the research prototype (Protocol 3) config.h.
+ */
+
+#ifndef XMESH_CONFIG_H
+#define XMESH_CONFIG_H
+
+#include <cstdint>
+
+// ============================================================
+// Trickle Scheduler Parameters (RFC 6206)
+// ============================================================
+// Reduces control overhead by 30-40% in stable networks
+
+constexpr uint32_t TRICKLE_I_MIN = 60000;      // Minimum interval: 60s
+constexpr uint32_t TRICKLE_I_MAX = 600000;     // Maximum interval: 600s (10 min)
+constexpr uint8_t TRICKLE_K = 1;               // Redundancy constant (suppress if ANY neighbor sent HELLO)
+constexpr bool TRICKLE_ENABLED = true;         // Enable Trickle adaptive scheduling
+
+// ============================================================
+// Cost Router Weights (Multi-Metric Routing)
+// ============================================================
+// Formula: cost = W1*hops + W2*(1-norm_RSSI) + W3*(1-norm_SNR) + W4*ETX + W5*gateway_bias
+
+constexpr float W1_HOP_COUNT = 1.0f;           // Weight for hop count
+constexpr float W2_RSSI = 0.3f;                // Weight for RSSI
+constexpr float W3_SNR = 0.2f;                 // Weight for SNR
+constexpr float W4_ETX = 0.4f;                 // Weight for ETX (Expected Transmission Count)
+constexpr float W5_GATEWAY_BIAS = 1.0f;        // Weight for gateway load balancing
+
+// RSSI/SNR normalization ranges (for cost calculation)
+constexpr int16_t RSSI_MIN = -120;             // Minimum RSSI (dBm)
+constexpr int16_t RSSI_MAX = -30;              // Maximum RSSI (dBm)
+constexpr int8_t SNR_MIN = -20;                // Minimum SNR (dB)
+constexpr int8_t SNR_MAX = 10;                 // Maximum SNR (dB)
+
+// ============================================================
+// ETX Tracker Parameters (Zero-Overhead Link Quality)
+// ============================================================
+// Uses sequence-gap detection to track link quality without probe packets
+
+constexpr uint8_t ETX_WINDOW_SIZE = 10;        // Sliding window size for ETX calculation
+constexpr float ETX_DEFAULT = 1.5f;            // Default ETX for new links
+constexpr float ETX_ALPHA = 0.3f;              // EWMA smoothing factor (0.0-1.0)
+
+// ============================================================
+// Gateway Balancer Parameters (Load Balancing)
+// ============================================================
+// Distributes traffic across multiple gateways to prevent bottlenecks
+
+constexpr uint32_t MIN_GATEWAY_LOAD_WINDOW_MS = 1000;       // Minimum sampling window (1s)
+constexpr float LOAD_SWITCH_THRESHOLD = 0.25f;              // Min pkt/min delta for load-based switch
+constexpr uint8_t MAX_GATEWAY_CANDIDATES = 10;              // Max gateways to evaluate
+
+// Neighbor health monitoring thresholds
+constexpr uint32_t DETECTION_THRESHOLD_MS = 360000;         // 6 min (miss 2 safety HELLOs @ 180s)
+constexpr uint32_t WARNING_THRESHOLD_MS = 180000;           // 3 min (miss 1 safety HELLO)
+
+// ============================================================
+// Hardware Configuration (Heltec WiFi LoRa 32 V3)
+// ============================================================
+
+// LoRa Radio Parameters
+constexpr uint32_t LORA_FREQUENCY = 923000000;              // AS923 frequency (Hz)
+constexpr uint8_t LORA_BANDWIDTH = 125;                     // Bandwidth: 125 kHz
+constexpr uint8_t LORA_SPREADING_FACTOR = 7;                // SF7 (faster, shorter range)
+constexpr uint8_t LORA_CODING_RATE = 5;                     // CR 4/5
+constexpr int8_t LORA_TX_POWER = 20;                        // TX power: 20 dBm
+
+// OLED Display Pins (SSD1306)
+constexpr uint8_t OLED_SDA = 41;
+constexpr uint8_t OLED_SCL = 42;
+constexpr uint8_t OLED_RST = 21;
+constexpr uint8_t OLED_WIDTH = 128;
+constexpr uint8_t OLED_HEIGHT = 64;
+
+// ============================================================
+// Node Configuration
+// ============================================================
+
+// Set to true if this node is a gateway (has WiFi/Internet uplink)
+constexpr bool IS_GATEWAY_NODE = false;
+
+// Node address (0 = auto-assign from LoRaMesher)
+constexpr uint16_t NODE_ADDRESS = 0;
+
+// ============================================================
+// Debugging and Logging
+// ============================================================
+
+constexpr uint32_t SERIAL_BAUD = 115200;
+constexpr bool DEBUG_TRICKLE = true;                        // Log Trickle scheduler events
+constexpr bool DEBUG_COST_ROUTER = true;                    // Log cost calculations
+constexpr bool DEBUG_ETX = true;                            // Log ETX updates
+constexpr bool DEBUG_GATEWAY_BALANCER = true;               // Log gateway balancing
+
+#endif // XMESH_CONFIG_H
