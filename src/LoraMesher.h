@@ -1062,7 +1062,7 @@ private:
      * @brief Has received a Message when scanning channels
      *
      */
-    bool hasReceivedMessage = false;
+    volatile bool hasReceivedMessage = false;
 
     /** @brief Get the Simulator Service object
      *
