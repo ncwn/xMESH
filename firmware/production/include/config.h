@@ -97,6 +97,26 @@ constexpr bool ENABLE_PMS_SENSOR = true;         // Enable air quality sensing
 constexpr bool ENABLE_GPS_SENSOR = true;         // Enable GPS location
 
 // ============================================================
+// Sensor Power Management
+// ============================================================
+
+constexpr uint8_t PMS_SET_PIN = 3;
+constexpr uint32_t SENSOR_READ_INTERVAL_MS = 60000;
+constexpr uint32_t PMS_WARMUP_MS = 30000;
+constexpr uint32_t PMS_DETECT_TIMEOUT_MS = 3000;
+constexpr uint32_t GPS_DETECT_TIMEOUT_MS = 2000;
+
+// ============================================================
+// MQTT Configuration (Gateway Only)
+// ============================================================
+
+constexpr const char* MQTT_BROKER_DEFAULT = "";
+constexpr uint16_t MQTT_PORT_DEFAULT = 1883;
+constexpr const char* MQTT_TOPIC_PREFIX = "xmesh/sensors";
+constexpr uint32_t MQTT_RECONNECT_INTERVAL_MS = 30000;
+constexpr bool ENABLE_MQTT_FORWARD = true;
+
+// ============================================================
 // Node Configuration
 // ============================================================
 
