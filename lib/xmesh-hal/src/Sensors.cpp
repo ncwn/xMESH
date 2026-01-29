@@ -115,13 +115,14 @@ bool Sensors::detectGPS(uint32_t timeoutMs) {
         delay(50);
     }
     
-    gps_detected_ = (chars_received > 0);
-    if (gps_detected_) {
-        ESP_LOGI(TAG, "GPS detected (partial: %lu chars)", chars_received);
+    // Require 50+ chars for detection - anything less is likely UART noise
+    gps_detected_ = false;
+    if (chars_received > 0) {
+        ESP_LOGW(TAG, "GPS not detected (only %lu chars, need 50+)", chars_received);
     } else {
-        ESP_LOGW(TAG, "GPS not detected (timeout %lu ms)", timeoutMs);
+        ESP_LOGW(TAG, "GPS not detected (no data, timeout %lu ms)", timeoutMs);
     }
-    return gps_detected_;
+    return false;
 }
 
 void Sensors::setPMSPower(bool on) {
