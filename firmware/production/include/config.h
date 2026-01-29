@@ -79,6 +79,24 @@ constexpr uint8_t OLED_WIDTH = 128;
 constexpr uint8_t OLED_HEIGHT = 64;
 
 // ============================================================
+// Sensor Configuration (PMS7003 Air Quality + GPS)
+// ============================================================
+
+// PMS7003 Particulate Sensor (UART)
+constexpr uint8_t PMS_RX_PIN = 4;                // PMS7003 TX -> ESP32 RX
+constexpr uint8_t PMS_TX_PIN = 5;                // ESP32 TX -> PMS7003 RX (optional, for commands)
+constexpr uint32_t PMS_BAUD = 9600;              // PMS7003 baud rate
+
+// GPS Module (UART) - NEO-M8N or similar
+constexpr uint8_t GPS_RX_PIN = 6;                // GPS TX -> ESP32 RX
+constexpr uint8_t GPS_TX_PIN = 7;                // ESP32 TX -> GPS RX (optional)
+constexpr uint32_t GPS_BAUD = 9600;              // GPS baud rate (NEO-M8N default)
+
+// Sensor enable flags
+constexpr bool ENABLE_PMS_SENSOR = true;         // Enable air quality sensing
+constexpr bool ENABLE_GPS_SENSOR = true;         // Enable GPS location
+
+// ============================================================
 // Node Configuration
 // ============================================================
 

@@ -6,12 +6,16 @@
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <WiFi.h>
-#include <ArduinoOTA.h>
+#include <ota/OTAManager.h>
 
 #include <xmesh/TrickleScheduler.h>
+#include <xmesh/hal/Sensors.h>
 #include <xmesh/CostRouter.h>
 #include <xmesh/ETXTracker.h>
 #include <xmesh/GatewayBalancer.h>
+#include <xmesh/hal/Display.h>
+#include <xmesh/MobilityDetector.h>
+#include "DutyCycleBudget.h"
 
 // LoRaMesher routing service for callback registration
 #include "services/RoutingTableService.h"
@@ -27,10 +31,17 @@ void initWiFi();
 void initOTA();
 void connectWiFi();
 void disconnectWiFi();
+void applyMobilityParams(xmesh::MobilityState state);
+uint32_t estimateAirtimeMs(size_t payloadLen);
 
 static XMeshConfig config;
 static bool wifiConnected = false;
 static bool otaInitialized = false;
+static xmesh::ota::OTAManager otaManager;
+static xmesh::hal::Display display;
+static xmesh::hal::Sensors sensors;
+static HardwareSerial pmsSerial(1);  // UART1 for PMS7003
+static HardwareSerial gpsSerial(2);  // UART2 for GPS
 static nvs_handle_t nvsHandle;
 static const char* NVS_NAMESPACE = "xmesh_cfg";
 
@@ -42,6 +53,8 @@ xmesh::TrickleScheduler trickle(TRICKLE_I_MIN, TRICKLE_I_MAX, TRICKLE_K, TRICKLE
 xmesh::CostRouter costRouter(W1_HOP_COUNT, W2_RSSI, W3_SNR, W4_ETX, W5_GATEWAY_BIAS);
 xmesh::ETXTracker etxTracker;
 xmesh::GatewayBalancer gatewayBalancer;
+xmesh::MobilityDetector mobilityDetector;
+DutyCycleBudget dutyCycleBudget;
 
 uint32_t lastMonitorCheck = 0;
 constexpr uint32_t MONITOR_INTERVAL_MS = 60000;
@@ -95,7 +108,45 @@ void helloReceivedCallback(uint16_t srcAddr) {
         etxTracker.updateLinkMetrics(srcAddr, rssi, snr, packetCounter);
     }
     
+    if (mobilityDetector.isEnabled()) {
+        mobilityDetector.feedSNR(srcAddr, node->receivedSNR);
+    }
+    
     gatewayBalancer.updateNeighborHealth(srcAddr);
+}
+
+void updateDisplay() {
+    display.clear();
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    
+    LoraMesher& radio = LoraMesher::getInstance();
+    
+    display.print("xMESH ");
+    display.println(config.isGateway ? "[GW]" : "[NODE]");
+    
+    display.print("Addr: ");
+    char addrBuf[8];
+    snprintf(addrBuf, sizeof(addrBuf), "%04X", radio.getLocalAddress());
+    display.println(addrBuf);
+    
+    display.print("Neighbors: ");
+    display.println(gatewayBalancer.getNeighborCount());
+    
+    display.print("Routes: ");
+    display.println(radio.routingTableSize());
+    
+    if (wifiConnected) {
+        display.print("IP: ");
+        display.println(WiFi.localIP().toString());
+    }
+    
+    if (mobilityDetector.isEnabled()) {
+        display.print("Mob: ");
+        display.println(mobilityDetector.getStateName());
+    }
+    
+    display.display();
 }
 
 void processReceivedPackets(void*) {
@@ -166,6 +217,13 @@ void loadConfig() {
     gatewayBalancer.setIsGateway(config.isGateway);
     ESP_LOGI(TAG, "Loaded Config: Gateway=%s, SSID=%s", 
              config.isGateway ? "YES" : "NO", config.wifiSsid);
+    
+    uint8_t mobilityVal = 0;
+    err = nvs_get_u8(nvsHandle, "mobility_en", &mobilityVal);
+    if (err == ESP_OK && mobilityVal != 0) {
+        mobilityDetector.enable();
+        ESP_LOGI(TAG, "Mobility detection: enabled (from NVS)");
+    }
 }
 
 void saveGatewayRole(bool isGateway) {
@@ -198,6 +256,16 @@ void saveWiFiCredentials(const char* ssid, const char* password) {
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save WiFi credentials: %s", esp_err_to_name(err));
+    }
+}
+
+void saveMobilityEnabled(bool enabled) {
+    esp_err_t err = nvs_set_u8(nvsHandle, "mobility_en", enabled ? 1 : 0);
+    if (err == ESP_OK) {
+        err = nvs_commit(nvsHandle);
+    }
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save mobility state: %s", esp_err_to_name(err));
     }
 }
 
@@ -277,12 +345,89 @@ void processSerialCommands() {
         Serial.printf("Routing Table: %d entries\n", radio.routingTableSize());
         Serial.printf("Trickle TX: %lu, Suppressed: %lu\n", 
                      trickle.getTransmitCount(), trickle.getSuppressCount());
+        if (mobilityDetector.isEnabled()) {
+            Serial.printf("Mobility: %s (variance: %.2f dB²)\n", 
+                         mobilityDetector.getStateName(), mobilityDetector.getAggregateVariance());
+            Serial.printf("Duty Cycle: %.1f%%\n", dutyCycleBudget.getUsagePercent());
+        }
         Serial.printf("Free Heap: %lu bytes\n", esp_get_free_heap_size());
         Serial.println("======================");
     }
     else if (command == "reset trickle") {
         trickle.reset();
         Serial.println("[CMD] Trickle timer reset to I_min");
+    }
+    else if (command.startsWith("send ")) {
+        String args = command.substring(5);
+        uint16_t destAddr = strtoul(args.c_str(), NULL, 16);
+        if (destAddr == 0) {
+            Serial.println("[CMD] Usage: send XXXX (hex address)");
+        } else {
+            LoraMesher& radio = LoraMesher::getInstance();
+            testPacket->counter = packetCounter++;
+            radio.createPacketAndSend(destAddr, testPacket, 1);
+            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
+            Serial.printf("[CMD] Sent packet #%lu to %04X\n", testPacket->counter, destAddr);
+        }
+    }
+    else if (command == "routes") {
+        LoraMesher& radio = LoraMesher::getInstance();
+        Serial.println("==== Routing Table ====");
+        Serial.printf("Total entries: %d\n", radio.routingTableSize());
+        RoutingTableService::printRoutingTable();
+        Serial.println("=======================");
+    }
+    else if (command == "neighbors") {
+        Serial.println("==== Neighbors ====");
+        Serial.printf("Count: %d\n", gatewayBalancer.getNeighborCount());
+        Serial.printf("ETX Tracked Links: %d\n", etxTracker.getNumTrackedLinks());
+        Serial.println("===================");
+    }
+    else if (command == "mobility on") {
+        mobilityDetector.enable();
+        saveMobilityEnabled(true);
+        Serial.println("[CMD] Mobility detection: ON");
+    }
+    else if (command == "mobility off") {
+        mobilityDetector.disable();
+        saveMobilityEnabled(false);
+        Serial.println("[CMD] Mobility detection: OFF");
+    }
+    else if (command == "emergency") {
+        if (!mobilityDetector.isEnabled()) {
+            Serial.println("[CMD] Enable mobility first: mobility on");
+        } else {
+            mobilityDetector.triggerEmergency();
+            applyMobilityParams(xmesh::MobilityState::EMERGENCY);
+            Serial.println("[CMD] EMERGENCY state triggered");
+        }
+    }
+    else if (command.startsWith("mobility simulate ")) {
+        String state = command.substring(18);
+        if (!mobilityDetector.isEnabled()) {
+            Serial.println("[CMD] Enable mobility first: mobility on");
+        } else if (state == "static") {
+            // Force static by feeding consistent SNR
+            for (int i = 0; i < 5; i++) mobilityDetector.feedSNR(0x0001, 10);
+            Serial.println("[CMD] Simulating STATIC state");
+        } else if (state == "mobile") {
+            // Force mobile by feeding varying SNR
+            for (int i = 0; i < 10; i++) mobilityDetector.feedSNR(0x0001, (i % 2) ? -5 : 15);
+            Serial.println("[CMD] Simulating MOBILE state");
+        } else if (state == "emergency") {
+            mobilityDetector.triggerEmergency();
+            applyMobilityParams(xmesh::MobilityState::EMERGENCY);
+            Serial.println("[CMD] Simulating EMERGENCY state");
+        } else {
+            Serial.println("[CMD] Usage: mobility simulate <static|mobile|emergency>");
+        }
+    }
+    else if (command == "dutycycle") {
+        Serial.println("==== Duty Cycle ====");
+        Serial.printf("Usage: %.1f%% of 1%% limit\n", dutyCycleBudget.getUsagePercent());
+        Serial.printf("Remaining: %lu ms (of 36000ms/hour)\n", dutyCycleBudget.getRemainingBudgetMs());
+        Serial.printf("Exhausted: %s\n", dutyCycleBudget.isExhausted() ? "YES" : "NO");
+        Serial.println("====================");
     }
     else if (command == "help") {
         Serial.println("Available commands:");
@@ -291,7 +436,14 @@ void processSerialCommands() {
         Serial.println("  wifi on/off     - Enable/disable WiFi for OTA");
         Serial.println("  wifi scan       - Scan for WiFi networks");
         Serial.println("  status          - Show node status");
+        Serial.println("  routes          - Show routing table");
+        Serial.println("  neighbors       - Show neighbor info");
+        Serial.println("  send XXXX       - Send test packet to address (hex)");
         Serial.println("  reset trickle   - Reset Trickle timer");
+        Serial.println("  mobility on/off - Enable/disable mobility detection");
+        Serial.println("  mobility simulate <state> - Simulate static/mobile/emergency");
+        Serial.println("  emergency       - Trigger emergency state");
+        Serial.println("  dutycycle       - Show duty cycle usage");
         Serial.println("  help            - Show this help");
     }
     else {
@@ -344,41 +496,23 @@ void initOTA() {
         return;
     }
     
-    // Create hostname from MAC address
+    // Create hostname reference (kept for reference as per instructions)
     String hostname = "xmesh-";
     hostname += String((uint32_t)(ESP.getEfuseMac() & 0xFFFFFF), HEX);
     
-    ArduinoOTA.setHostname(hostname.c_str());
-    ArduinoOTA.setPassword("xmesh2026");  // OTA password
+    // OTAManager handles setup internally (hostname, callbacks, safety)
+    otaInitialized = otaManager.begin();
     
-    ArduinoOTA.onStart([]() {
-        ESP_LOGI(TAG, "OTA Update starting...");
-        Serial.println("[OTA] Update starting...");
-    });
-    
-    ArduinoOTA.onEnd([]() {
-        ESP_LOGI(TAG, "OTA Update complete!");
-        Serial.println("[OTA] Update complete!");
-    });
-    
-    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("[OTA] Progress: %u%%\r", (progress / (total / 100)));
-    });
-    
-    ArduinoOTA.onError([](ota_error_t error) {
-        ESP_LOGE(TAG, "OTA Error[%u]", error);
-        Serial.printf("[OTA] Error[%u]\n", error);
-    });
-    
-    ArduinoOTA.begin();
-    otaInitialized = true;
-    ESP_LOGI(TAG, "OTA service started - hostname: %s", hostname.c_str());
-    Serial.printf("[OTA] Ready - hostname: %s\n", hostname.c_str());
+    if (otaInitialized) {
+        ESP_LOGI(TAG, "OTA service started (Managed) - reference hostname: %s", hostname.c_str());
+        Serial.printf("[OTA] Ready - Managed updates active\n");
+    } else {
+        ESP_LOGE(TAG, "OTA initialization failed");
+    }
 }
 
 void disconnectWiFi() {
     if (otaInitialized) {
-        ArduinoOTA.end();
         otaInitialized = false;
     }
     WiFi.disconnect(true);
@@ -388,10 +522,72 @@ void disconnectWiFi() {
     Serial.println("[WiFi] Disconnected");
 }
 
+void applyMobilityParams(xmesh::MobilityState state) {
+    switch (state) {
+        case xmesh::MobilityState::STATIC:
+            trickle.setIMin(60000);
+            trickle.setIMax(600000);
+            gatewayBalancer.setWarningThreshold(180000);
+            gatewayBalancer.setDetectionThreshold(360000);
+            ESP_LOGI(TAG, "Mobility: STATIC (I=60-600s, detect=360s)");
+            break;
+        case xmesh::MobilityState::MOBILE:
+            trickle.setIMin(20000);
+            trickle.setIMax(120000);
+            gatewayBalancer.setWarningThreshold(90000);
+            gatewayBalancer.setDetectionThreshold(180000);
+            ESP_LOGI(TAG, "Mobility: MOBILE (I=20-120s, detect=180s)");
+            break;
+        case xmesh::MobilityState::EMERGENCY:
+            trickle.setIMin(10000);
+            trickle.setIMax(60000);
+            trickle.reset();  // Immediate reset to I_min
+            gatewayBalancer.setWarningThreshold(30000);
+            gatewayBalancer.setDetectionThreshold(90000);
+            ESP_LOGI(TAG, "Mobility: EMERGENCY (I=10-60s, detect=90s)");
+            break;
+    }
+}
+
+uint32_t estimateAirtimeMs(size_t payloadLen) {
+    // SF7, BW125kHz, CR4/5 - simplified formula
+    // For small packets (4-20 bytes): ~37-50ms
+    const float symbolTime = 1.024f;  // 2^7 / 125000 * 1000 ms
+    const float preambleTime = 12.5f * symbolTime;  // 8 + 4.25 symbols
+    float payloadSymbols = 8.0f + (8.0f * payloadLen + 28.0f) / 28.0f * 5.0f;
+    return (uint32_t)(preambleTime + payloadSymbols * symbolTime + 0.5f);
+}
+
 void setup() {
     Serial.begin(SERIAL_BAUD);
     delay(1000);
     
+    if (display.begin()) {
+        ESP_LOGI(TAG, "OLED display initialized");
+        display.clear();
+        display.setCursor(0, 0);
+        display.setTextSize(1);
+        display.println("xMESH Starting...");
+        display.display();
+    } else {
+        ESP_LOGW(TAG, "OLED display init failed");
+    }
+
+    // Initialize sensors
+    if (ENABLE_PMS_SENSOR) {
+        pmsSerial.begin(PMS_BAUD, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
+        if (sensors.beginAirQuality(&pmsSerial)) {
+            ESP_LOGI(TAG, "PMS7003 sensor initialized");
+        }
+    }
+
+    if (ENABLE_GPS_SENSOR) {
+        gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
+        if (sensors.beginGPS(&gpsSerial)) {
+            ESP_LOGI(TAG, "GPS sensor initialized");
+        }
+    }
+
     initNVS();
     loadConfig();
 
@@ -444,6 +640,9 @@ void setup() {
     
     Serial.printf("\n[xMESH] Initialization complete. Entering main loop...\n\n");
     ESP_LOGI(TAG, "System initialized successfully");
+    
+    // Mark application as valid to prevent rollback after successful boot
+    otaManager.markAppValid();
 }
 
 void loop() {
@@ -460,6 +659,8 @@ void loop() {
         
         testPacket->counter = packetCounter++;
         radio.createPacketAndSend(BROADCAST_ADDR, testPacket, 1);
+        
+        dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
     }
     
     uint32_t now = millis();
@@ -476,12 +677,44 @@ void loop() {
                      etxTracker.getNumTrackedLinks(),
                      gatewayBalancer.getNeighborCount(),
                      radio.routingTableSize());
+        
+        if (mobilityDetector.isEnabled() && otaManager.getState() == xmesh::ota::OTAState::IDLE) {
+            auto prevState = mobilityDetector.getState();
+            mobilityDetector.tick(trickle.isAtMaxInterval());
+            auto newState = mobilityDetector.getState();
+            if (newState != prevState) {
+                applyMobilityParams(newState);
+            }
+        }
+        
+        dutyCycleBudget.tick();
+        
+        if (ENABLE_PMS_SENSOR) {
+            auto aq = sensors.readAirQuality();
+            if (aq.valid) {
+                ESP_LOGI(TAG, "Air Quality: PM1.0=%d PM2.5=%d PM10=%d ug/m3",
+                         aq.pm1_0, aq.pm2_5, aq.pm10);
+            }
+        }
+
+        if (ENABLE_GPS_SENSOR) {
+            auto gps = sensors.readGPS();
+            if (gps.valid) {
+                ESP_LOGI(TAG, "GPS: %.6f, %.6f Alt=%.1fm Sats=%d",
+                         gps.latitude, gps.longitude, gps.altitude, gps.satellites);
+            }
+        }
+        
+        updateDisplay();
     }
     
     // Handle OTA updates (non-blocking)
     if (otaInitialized) {
-        ArduinoOTA.handle();
+        otaManager.process();
     }
-    
+
+    // Update sensors (non-blocking)
+    sensors.update();
+
     delay(1000);
 }
