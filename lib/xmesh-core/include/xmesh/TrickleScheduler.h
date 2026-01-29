@@ -2,6 +2,8 @@
 #define XMESH_TRICKLE_SCHEDULER_H
 
 #include <cstdint>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace xmesh {
 
@@ -43,6 +45,8 @@ private:
         RESET
     } state;
 
+    SemaphoreHandle_t mutex_;
+
 public:
     /**
      * @brief Construct Trickle scheduler
@@ -53,8 +57,10 @@ public:
      */
     TrickleScheduler(uint32_t imin = 60000,
                      uint32_t imax = 600000,
-                     uint8_t redundancy = 1,
-                     bool enable = true);
+                      uint8_t redundancy = 1,
+                      bool enable = true);
+    
+    ~TrickleScheduler();
     
     /**
      * @brief Start the Trickle timer

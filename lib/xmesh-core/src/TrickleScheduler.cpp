@@ -11,6 +11,10 @@ TrickleScheduler::TrickleScheduler(uint32_t imin, uint32_t imax, uint8_t redunda
       intervalStart(0), nextTransmit(0), consistentHeard(0),
       enabled(enable), transmitCount(0), suppressCount(0),
       state(IDLE) {
+    mutex_ = xSemaphoreCreateMutex();
+    if (!mutex_) {
+        ESP_LOGE(TAG, "Failed to create mutex");
+    }
     if (imin > imax) {
         ESP_LOGE(TAG, "Invalid interval config: I_min (%lu) > I_max (%lu)", imin, imax);
     }
@@ -19,6 +23,13 @@ TrickleScheduler::TrickleScheduler(uint32_t imin, uint32_t imax, uint8_t redunda
     }
     if (k == 0) {
         ESP_LOGW(TAG, "Redundancy k=0 - suppression disabled");
+    }
+}
+
+TrickleScheduler::~TrickleScheduler() {
+    if (mutex_) {
+        vSemaphoreDelete(mutex_);
+        mutex_ = nullptr;
     }
 }
 
@@ -36,8 +47,11 @@ void TrickleScheduler::start() {
 void TrickleScheduler::reset() {
     if (!enabled) return;
     
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) { return; }
     I_current = I_min;
     consistentHeard = 0;
+    xSemaphoreGive(mutex_);
+
     intervalStart = millis();
     
     uint32_t halfInterval = I_current / 2;
@@ -51,8 +65,11 @@ void TrickleScheduler::reset() {
 void TrickleScheduler::doubleInterval() {
     if (!enabled) return;
     
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) { return; }
     I_current = min(I_current * 2, I_max);
     consistentHeard = 0;
+    xSemaphoreGive(mutex_);
+
     intervalStart = millis();
     
     uint32_t halfInterval = I_current / 2;
@@ -86,7 +103,14 @@ bool TrickleScheduler::shouldTransmit() {
     if (now >= nextTransmit && state != IDLE) {
         nextTransmit = UINT32_MAX;
         
+        bool suppress = false;
+        if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) { return false; }
         if (consistentHeard >= k) {
+            suppress = true;
+        }
+        xSemaphoreGive(mutex_);
+
+        if (suppress) {
             suppressCount++;
             ESP_LOGD(TAG, "SUPPRESS - heard %d consistent HELLOs", 
                          consistentHeard);
@@ -104,7 +128,9 @@ bool TrickleScheduler::shouldTransmit() {
 
 void TrickleScheduler::onHelloReceived() {
     if (!enabled) return;
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) { return; }
     consistentHeard++;
+    xSemaphoreGive(mutex_);
 }
 
 void TrickleScheduler::onInconsistentHello() {
