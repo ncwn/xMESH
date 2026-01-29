@@ -3,6 +3,21 @@
 
 #include <cstdint>
 #include <cfloat>
+#if __has_include("freertos/FreeRTOS.h")
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#else
+using SemaphoreHandle_t = void*;
+using TickType_t = uint32_t;
+static constexpr TickType_t portMAX_DELAY = 0xffffffffu;
+static constexpr int pdTRUE = 1;
+extern "C" {
+SemaphoreHandle_t xSemaphoreCreateMutex();
+int xSemaphoreTake(SemaphoreHandle_t, TickType_t);
+int xSemaphoreGive(SemaphoreHandle_t);
+void vSemaphoreDelete(SemaphoreHandle_t);
+}
+#endif
 
 namespace xmesh {
 
@@ -212,6 +227,7 @@ private:
 
     // Internal state for periodic logging
     uint32_t lastStatusLog;
+    SemaphoreHandle_t mutex_ = nullptr;
 
     /**
      * @brief Find neighbor index by address

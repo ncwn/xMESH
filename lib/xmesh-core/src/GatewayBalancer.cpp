@@ -1,4 +1,8 @@
+#if __has_include("xmesh/GatewayBalancer.h")
 #include "xmesh/GatewayBalancer.h"
+#else
+#include "../include/xmesh/GatewayBalancer.h"
+#endif
 #include <Arduino.h>
 #include <algorithm>
 #include <esp_log.h>
@@ -15,9 +19,17 @@ GatewayBalancer::GatewayBalancer(uint8_t maxNeighbors)
       numNeighbors(0),
       lastStatusLog(0) {
     neighbors = new NeighborHealth[maxNeighbors];
+    mutex_ = xSemaphoreCreateMutex();
+    if (!mutex_) {
+        ESP_LOGE(TAG, "Failed to create mutex");
+    }
 }
 
 GatewayBalancer::~GatewayBalancer() {
+    if (mutex_) {
+        vSemaphoreDelete(mutex_);
+        mutex_ = nullptr;
+    }
     delete[] neighbors;
 }
 
@@ -41,14 +53,25 @@ float GatewayBalancer::decodeGatewayLoad(uint8_t encodedLoad) {
 }
 
 void GatewayBalancer::recordGatewayLoadSample() {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in recordGatewayLoadSample");
+        return;
+    }
     if (!isGatewayNode) {
+        xSemaphoreGive(mutex_);
         return;
     }
     localLoadState.packetsSinceLastSample++;
+    xSemaphoreGive(mutex_);
 }
 
 uint8_t GatewayBalancer::sampleLocalGatewayLoadForHello() {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in sampleLocalGatewayLoadForHello");
+        return 255;
+    }
     if (!isGatewayNode) {
+        xSemaphoreGive(mutex_);
         return 255;
     }
 
@@ -57,6 +80,7 @@ uint8_t GatewayBalancer::sampleLocalGatewayLoadForHello() {
         localLoadState.lastSampleTimestamp = now;
         localLoadState.lastEncodedLoad = 0;
         localLoadState.packetsSinceLastSample = 0;
+        xSemaphoreGive(mutex_);
         return 0;
     }
 
@@ -74,6 +98,7 @@ uint8_t GatewayBalancer::sampleLocalGatewayLoadForHello() {
     localLoadState.packetsSinceLastSample = 0;
     localLoadState.lastSampleTimestamp = now;
     localLoadState.lastEncodedLoad = encoded;
+    xSemaphoreGive(mutex_);
     return encoded;
 }
 
@@ -91,6 +116,10 @@ float GatewayBalancer::getGatewayBias(uint16_t gatewayAddr, uint8_t encodedLoad)
 }
 
 void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in updateNeighborHealth");
+        return;
+    }
     uint32_t now = millis();
 
     int8_t idx = findNeighborIndex(addr);
@@ -108,6 +137,7 @@ void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
 
         ESP_LOGD(TAG, "Neighbor %04X: Heartbeat (silence: %lus, status: HEALTHY)",
                      addr, silence/1000);
+        xSemaphoreGive(mutex_);
         return;
     }
 
@@ -119,9 +149,14 @@ void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
         ESP_LOGW(TAG, "Cannot track neighbor %04X (max %d reached)", 
                      addr, maxNeighbors);
     }
+    xSemaphoreGive(mutex_);
 }
 
 uint8_t GatewayBalancer::monitorNeighborHealth() {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in monitorNeighborHealth");
+        return 0;
+    }
     uint32_t now = millis();
     uint8_t failedCount = 0;
 
@@ -176,6 +211,7 @@ uint8_t GatewayBalancer::monitorNeighborHealth() {
         }
     }
 
+    xSemaphoreGive(mutex_);
     return failedCount;
 }
 
@@ -206,20 +242,33 @@ uint32_t GatewayBalancer::getDetectionThreshold() const {
 }
 
 bool GatewayBalancer::isNeighborFailed(uint16_t addr) const {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in isNeighborFailed");
+        return false;
+    }
     int8_t idx = findNeighborIndex(addr);
     if (idx >= 0) {
-        return neighbors[idx].failureFlagged;
+        bool failed = neighbors[idx].failureFlagged;
+        xSemaphoreGive(mutex_);
+        return failed;
     }
+    xSemaphoreGive(mutex_);
     return false;
 }
 
 bool GatewayBalancer::getNeighborStats(uint16_t addr, uint8_t& missedHellos, uint32_t& silenceDuration) const {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in getNeighborStats");
+        return false;
+    }
     int8_t idx = findNeighborIndex(addr);
     if (idx >= 0) {
         missedHellos = neighbors[idx].missedHellos;
         silenceDuration = millis() - neighbors[idx].lastHeard;
+        xSemaphoreGive(mutex_);
         return true;
     }
+    xSemaphoreGive(mutex_);
     return false;
 }
 
