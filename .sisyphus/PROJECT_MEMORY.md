@@ -1,9 +1,10 @@
 # xMESH Project Memory
 
-**Fact-Checked**: 2026-01-30 by multi-agent verification (final)
-**Status**: PRODUCTION READY - All planned work complete
+**Last Updated**: 2026-01-30
+**Status**: BETA (Field-Trial Ready) - 3-minute validation complete, 4+ hour testing recommended
 **Branch**: `feature/xmesh-callbacks`
-**Total Project Lines**: ~3,654 (verified)
+**Total Project Lines**: ~10,244 (including LoRaMesher fork)
+**Build Status**: SUCCESS (45.8% flash, 15.8% RAM)
 
 ---
 
@@ -51,20 +52,20 @@ Transform research prototype into modular production firmware:
 
 | Component | Files | Lines | Status |
 |-----------|-------|-------|--------|
-| **TrickleScheduler** | TrickleScheduler.h/cpp | 295 | RFC 6206 fully implemented |
-| **CostRouter** | CostRouter.h/cpp | 166 | Multi-metric cost function |
-| **ETXTracker** | ETXTracker.h/cpp | 271 | Sequence-gap detection |
-| **GatewayBalancer** | GatewayBalancer.h/cpp | 484 | Load tracking + neighbor health |
-| **MobilityDetector** | MobilityDetector.h/cpp | 240 | SNR variance state machine |
-| **MeshConfig** | MeshConfig.h | 50 | Centralized routing parameters |
-| **Display** | Display.h/cpp | 248 | SSD1306 OLED driver |
-| **Sensors** | Sensors.h/cpp, SensorPacket.h | 340 | PMS7003 + GPS with auto-detect |
+| **TrickleScheduler** | TrickleScheduler.h/cpp | 325 | RFC 6206 fully implemented |
+| **CostRouter** | CostRouter.h/cpp | 164 | Multi-metric cost function |
+| **ETXTracker** | ETXTracker.h/cpp | 313 | Sequence-gap detection |
+| **GatewayBalancer** | GatewayBalancer.h/cpp | 555 | Load tracking + neighbor health |
+| **MobilityDetector** | MobilityDetector.h/cpp | 292 | SNR variance state machine |
+| **RoutingAdapter** | RoutingAdapter.h/cpp | 83 | Thread-safe LoRaMesher bridge |
+| **Display** | Display.h/cpp | 229 | SSD1306 OLED driver |
+| **Sensors** | Sensors.h/cpp, SensorPacket.h | 352 | PMS7003 + GPS with auto-detect |
 | **OTAManager** | OTAManager.h/cpp | 407 | ArduinoOTA + rollback safety |
-| **VersionControl** | VersionControl.h/cpp | 147 | Semantic versioning |
-| **Production Firmware** | main.cpp | 958 | Full integration |
-| **LoRaMesher Callbacks** | RoutingTableService.h/cpp | ~50 | CostCalculation + HelloReceived hooks |
+| **VersionControl** | VersionControl.h/cpp | 147 | Semantic versioning (future HTTP OTA) |
+| **Production Firmware** | main.cpp + config.h + DutyCycle | 1,259 | Full integration |
+| **LoRaMesher Fork** | src/*.cpp,h | 6,119 | Modified fork - see docs/FORK_MODIFICATIONS.md |
 
-**Total: ~3,654 lines of production code**
+**Total: ~10,244 lines (including LoRaMesher fork)**
 
 ### Verified Working Features
 
@@ -75,7 +76,7 @@ Transform research prototype into modular production firmware:
 | Cost-Based Routing | Multi-metric evaluation with 15% hysteresis |
 | ETX Tracking | Sequence-gap detection working |
 | Gateway Load Balancing | PPM-based distribution |
-| Serial CLI | 27 commands (status, neighbors, routes, sensors, mqtt, etc.) |
+| Serial CLI | 24 commands (see AGENTS.md for full list) |
 | NVS Persistence | Gateway mode, WiFi creds saved across reboots |
 | WiFi OTA | ArduinoOTA on gateway nodes |
 | Boot Rollback | 3-failure auto-revert mechanism |
@@ -86,6 +87,15 @@ Transform research prototype into modular production firmware:
 | Sensor Mesh TX | 23-byte packets every 60s |
 | MQTT Forwarding | JSON to test.mosquitto.org verified |
 | Display Status | Shows SENSOR/RELAY/GW modes |
+
+### Testing Evidence
+
+| Test | Duration | Result | Evidence |
+|------|----------|--------|----------|
+| Integration Test | ~3 min | PASS | `.sisyphus/evidence/integration-test.log` |
+| Stability Test | 3 min | PASS | `.sisyphus/evidence/stability-test-20260129.md` |
+| Scale Test (5-10 nodes) | NOT EXECUTED | N/A | `.sisyphus/evidence/scale-test-plan.md` (plan only) |
+| 4-Hour Stability | NOT EXECUTED | N/A | Recommended before production |
 
 ---
 
@@ -172,11 +182,11 @@ firmware/production/
 
 ### Documentation
 ```
-AGENTS.md                # AI assistant guide
-README.md                # Project overview
-docs/ARCHITECTURE.md     # System design
-docs/DEPLOYMENT.md       # Flashing guide
-CHANGELOG.md             # Version history
+README.md                      # Project overview (root)
+docs/ARCHITECTURE.md           # System design
+docs/DEPLOYMENT.md             # Flashing guide
+.sisyphus/AGENTS.md            # AI assistant guide
+.sisyphus/PROJECT_MEMORY.md    # This file - project state
 ```
 
 ---

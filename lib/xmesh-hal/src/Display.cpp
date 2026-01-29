@@ -143,30 +143,5 @@ void Display::println() {
     static_cast<Adafruit_SSD1306*>(display_impl_)->println();
 }
 
-uint16_t Display::width() const {
-    if (!display_impl_) return 0;
-    return static_cast<Adafruit_SSD1306*>(display_impl_)->width();
-}
-
-uint16_t Display::height() const {
-    if (!display_impl_) return 0;
-    return static_cast<Adafruit_SSD1306*>(display_impl_)->height();
-}
-
-void Display::drawHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
-    if (!display_impl_) return;
-    static_cast<Adafruit_SSD1306*>(display_impl_)->drawFastHLine(x, y, w, color);
-}
-
-void Display::drawVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
-    if (!display_impl_) return;
-    static_cast<Adafruit_SSD1306*>(display_impl_)->drawFastVLine(x, y, h, color);
-}
-
-void Display::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-    if (!display_impl_) return;
-    static_cast<Adafruit_SSD1306*>(display_impl_)->fillRect(x, y, w, h, color);
-}
-
 } // namespace hal
 } // namespace xmesh

@@ -60,7 +60,6 @@ private:
     
     float calculateNeighborVariance(const NeighborSNR& neighbor) const;
     NeighborSNR* findOrCreateNeighbor(uint16_t addr);
-    void evictOldestNeighbor();
 };
 
 }

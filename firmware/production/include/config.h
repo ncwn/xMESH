@@ -71,9 +71,8 @@ constexpr uint8_t LORA_SPREADING_FACTOR = 7;                // SF7 (faster, shor
 constexpr uint8_t LORA_CODING_RATE = 5;                     // CR 4/5
 constexpr int8_t LORA_TX_POWER = 20;                        // TX power: 20 dBm
 
-// OLED Display Pins (SSD1306)
-constexpr uint8_t OLED_SDA = 41;
-constexpr uint8_t OLED_SCL = 42;
+// OLED Display (SSD1306) - Heltec V3 uses internal I2C pins (17, 18)
+// Display.cpp handles initialization with correct Heltec V3 pin mapping
 constexpr uint8_t OLED_RST = 21;
 constexpr uint8_t OLED_WIDTH = 128;
 constexpr uint8_t OLED_HEIGHT = 64;
@@ -131,9 +130,5 @@ constexpr uint16_t NODE_ADDRESS = 0;
 // ============================================================
 
 constexpr uint32_t SERIAL_BAUD = 115200;
-constexpr bool DEBUG_TRICKLE = true;                        // Log Trickle scheduler events
-constexpr bool DEBUG_COST_ROUTER = true;                    // Log cost calculations
-constexpr bool DEBUG_ETX = true;                            // Log ETX updates
-constexpr bool DEBUG_GATEWAY_BALANCER = true;               // Log gateway balancing
 
 #endif // XMESH_CONFIG_H

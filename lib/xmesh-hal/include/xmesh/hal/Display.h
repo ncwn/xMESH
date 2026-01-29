@@ -74,31 +74,6 @@ public:
     void println(float value, int decimals = 2);
     void println();  // Just newline
 
-    /**
-     * @brief Get display width in pixels
-     */
-    uint16_t width() const;
-
-    /**
-     * @brief Get display height in pixels
-     */
-    uint16_t height() const;
-
-    /**
-     * @brief Draw a horizontal line
-     */
-    void drawHLine(int16_t x, int16_t y, int16_t w, uint16_t color);
-
-    /**
-     * @brief Draw a vertical line
-     */
-    void drawVLine(int16_t x, int16_t y, int16_t h, uint16_t color);
-
-    /**
-     * @brief Fill a rectangle
-     */
-    void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
-
 private:
     void* display_impl_;  // Opaque pointer to SSD1306 implementation
 };
