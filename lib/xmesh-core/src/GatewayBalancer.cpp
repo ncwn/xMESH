@@ -1,10 +1,7 @@
-#if __has_include("xmesh/GatewayBalancer.h")
 #include "xmesh/GatewayBalancer.h"
-#else
-#include "../include/xmesh/GatewayBalancer.h"
-#endif
 #include <Arduino.h>
 #include <algorithm>
+#include <new>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 
@@ -18,7 +15,11 @@ GatewayBalancer::GatewayBalancer(uint8_t maxNeighbors)
       maxNeighbors(maxNeighbors),
       numNeighbors(0),
       lastStatusLog(0) {
-    neighbors = new NeighborHealth[maxNeighbors];
+    neighbors = new (std::nothrow) NeighborHealth[maxNeighbors];
+    if (!neighbors) {
+        ESP_LOGE(TAG, "Failed to allocate neighbor health array (%d entries)", maxNeighbors);
+        this->maxNeighbors = 0;
+    }
     mutex_ = xSemaphoreCreateMutex();
     if (!mutex_) {
         ESP_LOGE(TAG, "Failed to create mutex");
@@ -254,6 +255,19 @@ bool GatewayBalancer::isNeighborFailed(uint16_t addr) const {
     }
     xSemaphoreGive(mutex_);
     return false;
+}
+
+uint16_t GatewayBalancer::getNeighborAddress(uint8_t index) const {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in getNeighborAddress");
+        return 0;
+    }
+    uint16_t addr = 0;
+    if (index < numNeighbors) {
+        addr = neighbors[index].address;
+    }
+    xSemaphoreGive(mutex_);
+    return addr;
 }
 
 bool GatewayBalancer::getNeighborStats(uint16_t addr, uint8_t& missedHellos, uint32_t& silenceDuration) const {
