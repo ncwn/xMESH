@@ -64,86 +64,107 @@ Display::~Display() {
 }
 
 void Display::clear() {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->clearDisplay();
 }
 
 void Display::display() {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->display();
 }
 
 void Display::setCursor(uint16_t x, uint16_t y) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->setCursor(x, y);
 }
 
 void Display::setTextSize(uint8_t size) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->setTextSize(size);
 }
 
 void Display::setTextColor(uint16_t color) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->setTextColor(color);
 }
 
 void Display::print(const char* text) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->print(text);
 }
 
 void Display::print(const String& text) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->print(text);
 }
 
 void Display::print(int value) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->print(value);
 }
 
 void Display::print(unsigned int value) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->print(value);
 }
 
 void Display::print(float value, int decimals) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->print(value, decimals);
 }
 
 void Display::println(const char* text) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println(text);
 }
 
 void Display::println(const String& text) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println(text);
 }
 
 void Display::println(int value) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println(value);
 }
 
 void Display::println(unsigned int value) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println(value);
 }
 
 void Display::println(float value, int decimals) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println(value, decimals);
 }
 
 void Display::println() {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->println();
 }
 
 uint16_t Display::width() const {
+    if (!display_impl_) return 0;
     return static_cast<Adafruit_SSD1306*>(display_impl_)->width();
 }
 
 uint16_t Display::height() const {
+    if (!display_impl_) return 0;
     return static_cast<Adafruit_SSD1306*>(display_impl_)->height();
 }
 
 void Display::drawHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->drawFastHLine(x, y, w, color);
 }
 
 void Display::drawVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->drawFastVLine(x, y, h, color);
 }
 
 void Display::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
+    if (!display_impl_) return;
     static_cast<Adafruit_SSD1306*>(display_impl_)->fillRect(x, y, w, h, color);
 }
 
