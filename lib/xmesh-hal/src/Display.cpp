@@ -1,4 +1,4 @@
-#include "hal/Display.h"
+#include "xmesh/hal/Display.h"
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
@@ -8,28 +8,44 @@
 #define OLED_RESET -1
 #define SCREEN_ADDRESS 0x3C
 
-#define HELTEC_V3_SDA 41
-#define HELTEC_V3_SCL 42
+// Heltec WiFi LoRa 32 V3 (ESP32-S3) OLED pins
+#define HELTEC_V3_SDA 17
+#define HELTEC_V3_SCL 18
 #define HELTEC_V3_RST 21
+#define HELTEC_V3_VEXT 36  // Vext power control - LOW = ON
 
 namespace xmesh {
 namespace hal {
 
 bool Display::begin() {
+    Serial.println("[Display] Initializing OLED...");
+    
+    // Enable Vext power for OLED (GPIO 36 = LOW to power on)
+    pinMode(HELTEC_V3_VEXT, OUTPUT);
+    digitalWrite(HELTEC_V3_VEXT, LOW);
+    delay(50);
+    Serial.println("[Display] Vext power enabled (GPIO 36 LOW)");
+    
+    // Reset OLED
     pinMode(HELTEC_V3_RST, OUTPUT);
     digitalWrite(HELTEC_V3_RST, LOW);
-    delay(20);
+    delay(50);
     digitalWrite(HELTEC_V3_RST, HIGH);
+    delay(50);
 
+    // Initialize I2C with Heltec V3 pins
     Wire.begin(HELTEC_V3_SDA, HELTEC_V3_SCL);
+    delay(100);
 
     auto* impl = new Adafruit_SSD1306(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
     display_impl_ = static_cast<void*>(impl);
 
     if (!impl->begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
+        Serial.println("[Display] SSD1306 init failed at 0x3C");
         return false;
     }
 
+    Serial.println("[Display] SSD1306 initialized OK");
     impl->clearDisplay();
     impl->setTextColor(SSD1306_WHITE);
     impl->setTextSize(1);

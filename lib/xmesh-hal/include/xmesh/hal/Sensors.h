@@ -3,6 +3,9 @@
 
 #include <Arduino.h>
 
+class SerialPM;
+class TinyGPSPlus;
+
 namespace xmesh {
 namespace hal {
 
@@ -34,8 +37,9 @@ public:
     void update();
 
 private:
-    void* pms_impl_;
-    void* gps_impl_;
+    SerialPM* pms_;
+    TinyGPSPlus* gps_;
+    HardwareSerial* gps_serial_;
 };
 
 } // namespace hal
