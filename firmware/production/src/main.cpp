@@ -93,9 +93,9 @@ float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
     float etx = ETX_DEFAULT;
     float gatewayBias = 0.0f;
     
-    RouteNode* node = RoutingTableService::findNode(via);
-    if (node != nullptr) {
-        snr = node->receivedSNR;
+    RouteNodeCopy nodeCopy;
+    if (RoutingTableService::findNodeCopy(via, nodeCopy)) {
+        snr = nodeCopy.receivedSNR;
         rssi = static_cast<int16_t>(snr * 4 - 110);
     }
     
@@ -121,15 +121,15 @@ float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
 void helloReceivedCallback(uint16_t srcAddr) {
     trickle.onHelloReceived();
     
-    RouteNode* node = RoutingTableService::findNode(srcAddr);
-    if (node != nullptr && node->networkNode.metric == 1) {
-        int8_t snr = node->receivedSNR;
+    RouteNodeCopy nodeCopy;
+    if (RoutingTableService::findNodeCopy(srcAddr, nodeCopy) && nodeCopy.metric == 1) {
+        int8_t snr = nodeCopy.receivedSNR;
         int16_t rssi = static_cast<int16_t>(snr * 4 - 110);
         etxTracker.updateLinkMetrics(srcAddr, rssi, snr, packetCounter);
     }
     
-    if (mobilityDetector.isEnabled()) {
-        mobilityDetector.feedSNR(srcAddr, node->receivedSNR);
+    if (mobilityDetector.isEnabled() && nodeCopy.valid) {
+        mobilityDetector.feedSNR(srcAddr, nodeCopy.receivedSNR);
     }
     
     gatewayBalancer.updateNeighborHealth(srcAddr);
