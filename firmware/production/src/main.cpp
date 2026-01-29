@@ -21,51 +21,30 @@ xmesh::GatewayBalancer gatewayBalancer;
 uint32_t lastMonitorCheck = 0;
 constexpr uint32_t MONITOR_INTERVAL_MS = 60000;
 
-float costCalculationCB(uint8_t hops, uint16_t nextHop, uint16_t destAddr) {
-    int16_t rssi = -70;
-    int8_t snr = 5;
-    
-    xmesh::LinkMetrics* metrics = etxTracker.getLinkMetrics(nextHop);
-    if (metrics != nullptr) {
-        rssi = metrics->rssi;
-        snr = metrics->snr;
-    }
-    
-    float etx = (metrics != nullptr) ? metrics->etx : ETX_DEFAULT;
-    
-    uint8_t encodedLoad = 255;
-    float gatewayBias = gatewayBalancer.getGatewayBias(destAddr, encodedLoad);
-    
-    return costRouter.calculateCost(hops, nextHop, destAddr, rssi, snr, etx, gatewayBias);
-}
+struct TestPacket {
+    uint32_t counter;
+};
 
-void helloReceivedCB(uint16_t srcAddr) {
-    trickle.onHelloReceived();
-    
-    gatewayBalancer.updateNeighborHealth(srcAddr);
-    
-    int8_t receivedSNR = LoraMesher.getReceivedSNR();
-    int16_t estimatedRSSI = static_cast<int16_t>(receivedSNR * 4 - 110);
-    
-    static uint32_t helloSeqNum = 0;
-    helloSeqNum++;
-    
-    etxTracker.updateLinkMetrics(srcAddr, estimatedRSSI, receivedSNR, helloSeqNum);
-}
+TestPacket* testPacket = new TestPacket;
+uint32_t packetCounter = 0;
 
 void processReceivedPackets(void*) {
     for (;;) {
         ulTaskNotifyTake(pdPASS, portMAX_DELAY);
         
-        while (LoraMesher.getReceivedQueueSize() > 0) {
+        LoraMesher& radio = LoraMesher::getInstance();
+        while (radio.getReceivedQueueSize() > 0) {
             Serial.printf("[xMESH] Processing received packet\n");
             
-            AppPacket<uint8_t>* packet = LoraMesher.getNextAppPacket<uint8_t>();
+            AppPacket<TestPacket>* packet = radio.getNextAppPacket<TestPacket>();
             
-            Serial.printf("[xMESH] Received %d bytes from %04X\n", 
-                         packet->payloadSize, packet->src);
+            Serial.printf("[xMESH] Received counter=%lu from %04X\n", 
+                         packet->payload->counter, packet->src);
             
-            LoraMesher.deletePacket(packet);
+            trickle.onHelloReceived();
+            gatewayBalancer.updateNeighborHealth(packet->src);
+            
+            radio.deletePacket(packet);
         }
     }
 }
@@ -100,8 +79,6 @@ void setup() {
     Serial.printf("  xMESH Production Firmware\n");
     Serial.printf("  Modular LoRa Mesh Network\n");
     Serial.printf("====================================\n");
-    Serial.printf("Node Address: %04X\n", NODE_ADDRESS);
-    Serial.printf("Gateway Mode: %s\n", IS_GATEWAY_NODE ? "YES" : "NO");
     Serial.printf("Trickle: I_min=%lus, I_max=%lus, k=%d\n", 
                   TRICKLE_I_MIN/1000, TRICKLE_I_MAX/1000, TRICKLE_K);
     Serial.printf("====================================\n\n");
@@ -113,11 +90,18 @@ void setup() {
                   trickle.getCurrentIntervalSec());
     
     LoraMesher& radio = LoraMesher::getInstance();
-    radio.begin();
     
-    RoutingTableService::setCostCalculationCallback(costCalculationCB);
-    RoutingTableService::setHelloReceivedCallback(helloReceivedCB);
-    Serial.printf("[LoRaMesher] Callbacks registered\n");
+    // Configure LoRaMesher with Heltec WiFi LoRa 32 V3 pins (SX1262)
+    LoraMesher::LoraMesherConfig config = LoraMesher::LoraMesherConfig();
+    config.loraCs = 8;      // SS pin
+    config.loraRst = 12;    // RST_LoRa  
+    config.loraIrq = 14;    // DIO1 (interrupt)
+    config.loraIo1 = 13;    // BUSY_LoRa (gpio for SX1262)
+    config.module = LoraMesher::LoraModules::SX1262_MOD;
+    
+    radio.begin(config);
+    
+    Serial.printf("[LoRaMesher] Initialized with address: %04X\n", radio.getLocalAddress());
     
     createReceiveMessagesTask();
     radio.setReceiveAppDataTaskHandle(receiveLoRaMessage_Handle);
@@ -133,12 +117,15 @@ void loop() {
     esp_task_wdt_reset();
     
     if (trickle.shouldTransmit()) {
-        Serial.printf("[Trickle] Transmitting HELLO (interval: %.1fs, TX: %lu, Suppressed: %lu)\n",
+        Serial.printf("[Trickle] Transmitting (interval: %.1fs, TX: %lu, Suppressed: %lu)\n",
                      trickle.getCurrentIntervalSec(),
                      trickle.getTransmitCount(),
                      trickle.getSuppressCount());
         
-        LoraMesher.sendHello();
+        LoraMesher& radio = LoraMesher::getInstance();
+        
+        testPacket->counter = packetCounter++;
+        radio.createPacketAndSend(BROADCAST_ADDR, testPacket, 1);
     }
     
     uint32_t now = millis();
@@ -150,11 +137,11 @@ void loop() {
             Serial.printf("[GatewayBalancer] Detected %d failed neighbors\n", failedNeighbors);
         }
         
-        Serial.printf("[Status] Tracked Links: %d, Neighbors: %d\n",
+        LoraMesher& radio = LoraMesher::getInstance();
+        Serial.printf("[Status] Tracked Links: %d, Neighbors: %d, Routing Table Size: %d\n",
                      etxTracker.getNumTrackedLinks(),
-                     gatewayBalancer.getNeighborCount());
-        
-        RoutingTableService::printRoutingTable();
+                     gatewayBalancer.getNeighborCount(),
+                     radio.routingTableSize());
     }
     
     delay(1000);
