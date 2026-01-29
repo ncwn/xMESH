@@ -34,12 +34,16 @@ bool MobilityDetector::isEnabled() const {
 }
 
 void MobilityDetector::feedSNR(uint16_t addr, int8_t snr) {
-    if (!enabled_) return;
+    if (!enabled_) {
+        ESP_LOGD(TAG, "feedSNR ignored - detector disabled");
+        return;
+    }
 
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
 
     NeighborSNR* neighbor = findOrCreateNeighbor(addr);
     if (!neighbor) {
+        ESP_LOGW(TAG, "feedSNR: failed to track neighbor %04X", addr);
         xSemaphoreGive(mutex_);
         return;
     }
@@ -54,7 +58,10 @@ void MobilityDetector::feedSNR(uint16_t addr, int8_t snr) {
 }
 
 void MobilityDetector::tick(bool trickleAtMax) {
-    if (!enabled_) return;
+    if (!enabled_) {
+        ESP_LOGD(TAG, "tick ignored - detector disabled");
+        return;
+    }
 
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
 
