@@ -7,7 +7,19 @@ namespace xmesh {
 
 static const char* TAG = "MOBILITY";
 
-MobilityDetector::MobilityDetector() {}
+MobilityDetector::MobilityDetector() {
+    mutex_ = xSemaphoreCreateMutex();
+    if (!mutex_) {
+        ESP_LOGE(TAG, "Failed to create mutex");
+    }
+}
+
+MobilityDetector::~MobilityDetector() {
+    if (mutex_) {
+        vSemaphoreDelete(mutex_);
+        mutex_ = nullptr;
+    }
+}
 
 void MobilityDetector::enable() {
     enabled_ = true;
@@ -24,8 +36,13 @@ bool MobilityDetector::isEnabled() const {
 void MobilityDetector::feedSNR(uint16_t addr, int8_t snr) {
     if (!enabled_) return;
 
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
+
     NeighborSNR* neighbor = findOrCreateNeighbor(addr);
-    if (!neighbor) return;
+    if (!neighbor) {
+        xSemaphoreGive(mutex_);
+        return;
+    }
 
     neighbor->snrWindow[neighbor->windowIndex] = snr;
     neighbor->windowIndex = (neighbor->windowIndex + 1) % SNR_WINDOW_SIZE;
@@ -33,15 +50,30 @@ void MobilityDetector::feedSNR(uint16_t addr, int8_t snr) {
         neighbor->windowFilled++;
     }
     neighbor->lastUpdate = millis();
+    xSemaphoreGive(mutex_);
 }
 
 void MobilityDetector::tick(bool trickleAtMax) {
     if (!enabled_) return;
 
-    uint32_t now = millis();
-    if (now - lastTransitionTime_ < HYSTERESIS_MS) return;
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
 
-    float variance = getAggregateVariance();
+    uint32_t now = millis();
+    if (now - lastTransitionTime_ < HYSTERESIS_MS) {
+        xSemaphoreGive(mutex_);
+        return;
+    }
+
+    float totalVariance = 0;
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < neighborCount_; i++) {
+        float v = calculateNeighborVariance(neighbors_[i]);
+        if (neighbors_[i].windowFilled >= 5) {
+            totalVariance += v;
+            count++;
+        }
+    }
+    float variance = (count > 0) ? (totalVariance / count) : 0.0f;
 
     switch (state_) {
         case MobilityState::STATIC:
@@ -82,10 +114,14 @@ void MobilityDetector::tick(bool trickleAtMax) {
             }
             break;
     }
+    xSemaphoreGive(mutex_);
 }
 
 MobilityState MobilityDetector::getState() const {
-    return state_;
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return state_;
+    MobilityState s = state_;
+    xSemaphoreGive(mutex_);
+    return s;
 }
 
 const char* MobilityDetector::getStateName() const {
@@ -98,20 +134,25 @@ const char* MobilityDetector::getStateName() const {
 }
 
 void MobilityDetector::triggerEmergency() {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
     if (state_ != MobilityState::EMERGENCY) {
         ESP_LOGI(TAG, "Emergency triggered");
         state_ = MobilityState::EMERGENCY;
         emergencyStartTime_ = millis();
         lastTransitionTime_ = millis();
     }
+    xSemaphoreGive(mutex_);
 }
 
 void MobilityDetector::simulateState(MobilityState state) {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
     state_ = state;
     lastTransitionTime_ = millis();
+    xSemaphoreGive(mutex_);
 }
 
 float MobilityDetector::getAggregateVariance() const {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return 0.0f;
     float totalVariance = 0;
     uint8_t count = 0;
 
@@ -123,7 +164,9 @@ float MobilityDetector::getAggregateVariance() const {
         }
     }
 
-    return (count > 0) ? (totalVariance / count) : 0.0f;
+    float result = (count > 0) ? (totalVariance / count) : 0.0f;
+    xSemaphoreGive(mutex_);
+    return result;
 }
 
 float MobilityDetector::calculateNeighborVariance(const NeighborSNR& neighbor) const {

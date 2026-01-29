@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace xmesh {
 
@@ -8,6 +10,7 @@ enum class MobilityState : uint8_t { STATIC, MOBILE, EMERGENCY };
 class MobilityDetector {
 public:
     MobilityDetector();
+    ~MobilityDetector();
     
     void enable();
     void disable();
@@ -52,6 +55,8 @@ private:
     uint32_t stableStartTime_ = 0;
     uint32_t emergencyStartTime_ = 0;
     uint8_t highVarianceCount_ = 0;
+    
+    SemaphoreHandle_t mutex_;
     
     float calculateNeighborVariance(const NeighborSNR& neighbor) const;
     NeighborSNR* findOrCreateNeighbor(uint16_t addr);
