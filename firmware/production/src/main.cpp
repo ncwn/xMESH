@@ -230,9 +230,11 @@ void processReceivedPackets(void*) {
                 if (sp->version == xmesh::hal::SENSOR_PACKET_VERSION) {
                     ESP_LOGI(TAG, "SensorPacket from %04X: PM2.5=%d, lat=%ld, lon=%ld",
                              rawPacket->src, sp->pm2_5, sp->latitude, sp->longitude);
+                    Serial.printf("[RX] SensorPacket from %04X: PM2.5=%d\n", rawPacket->src, sp->pm2_5);
                     
                     if (config.isGateway && ENABLE_MQTT_FORWARD) {
                         publishSensorToMQTT(rawPacket->src, sp);
+                        Serial.printf("[MQTT] Published sensor data from %04X\n", rawPacket->src);
                     }
                 }
             } else {
