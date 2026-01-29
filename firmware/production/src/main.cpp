@@ -19,6 +19,10 @@ struct XMeshConfig {
     char wifiPassword[65];
 };
 
+// Forward declarations
+void initWiFi();
+void initOTA();
+
 static XMeshConfig config;
 static bool wifiConnected = false;
 static bool otaInitialized = false;
@@ -181,8 +185,24 @@ void processSerialCommands() {
         LoraMesher::getInstance().removeGatewayRole();
         Serial.println("[CMD] Gateway mode: OFF");
     }
+    else if (command == "wifi scan") {
+        Serial.println("[WiFi] Scanning...");
+        WiFi.mode(WIFI_STA);
+        WiFi.disconnect();
+        delay(100);
+        int n = WiFi.scanNetworks();
+        Serial.printf("[WiFi] Found %d networks:\n", n);
+        for (int i = 0; i < n; i++) {
+            Serial.printf("  %d: %s (%d dBm) %s\n", 
+                i+1, WiFi.SSID(i).c_str(), WiFi.RSSI(i),
+                WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
+        }
+    }
+    else if (command == "wifi connect") {
+        initWiFi();
+        initOTA();
+    }
     else if (command.startsWith("wifi ")) {
-        // Parse: wifi SSID PASSWORD
         String args = command.substring(5);
         int spaceIdx = args.indexOf(' ');
         if (spaceIdx > 0) {
@@ -215,6 +235,8 @@ void processSerialCommands() {
         Serial.println("Available commands:");
         Serial.println("  gateway on/off  - Toggle gateway mode");
         Serial.println("  wifi SSID PASS  - Set WiFi credentials");
+        Serial.println("  wifi scan       - Scan for WiFi networks");
+        Serial.println("  wifi connect    - Retry WiFi connection");
         Serial.println("  status          - Show node status");
         Serial.println("  reset trickle   - Reset Trickle timer");
         Serial.println("  help            - Show this help");
@@ -237,6 +259,8 @@ void initWiFi() {
     }
     
     ESP_LOGI(TAG, "Connecting to WiFi: %s", config.wifiSsid);
+    Serial.printf("[WiFi] SSID: '%s' (len=%d), Pass len=%d\n", 
+                  config.wifiSsid, strlen(config.wifiSsid), strlen(config.wifiPassword));
     WiFi.mode(WIFI_STA);
     WiFi.begin(config.wifiSsid, config.wifiPassword);
     
