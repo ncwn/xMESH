@@ -20,9 +20,30 @@ LinkMetrics::LinkMetrics()
 
 // ETXTracker constructor
 ETXTracker::ETXTracker() : numTrackedLinks(0) {
+    mutex_ = xSemaphoreCreateMutex();
+    if (!mutex_) {
+        ESP_LOGE(TAG, "Failed to create mutex");
+    }
+}
+
+ETXTracker::~ETXTracker() {
+    if (mutex_) {
+        vSemaphoreDelete(mutex_);
+        mutex_ = nullptr;
+    }
 }
 
 LinkMetrics* ETXTracker::getLinkMetrics(uint16_t address) {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in getLinkMetrics");
+        return nullptr;
+    }
+    LinkMetrics* result = getLinkMetricsInternal(address);
+    xSemaphoreGive(mutex_);
+    return result;
+}
+
+LinkMetrics* ETXTracker::getLinkMetricsInternal(uint16_t address) {
     for (uint8_t i = 0; i < numTrackedLinks; i++) {
         if (linkMetrics[i].address == address) {
             return &linkMetrics[i];
@@ -55,6 +76,11 @@ LinkMetrics* ETXTracker::getLinkMetrics(uint16_t address) {
 }
 
 void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, uint32_t seqNum) {
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in updateLinkMetrics");
+        return;
+    }
+
     if (rssi < -150 || rssi > 0) {
         ESP_LOGW(TAG, "Invalid RSSI %d from node %04X", rssi, address);
     }
@@ -63,7 +89,7 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
         ESP_LOGW(TAG, "Invalid SNR %d from node %04X", snr, address);
     }
     
-    LinkMetrics* link = getLinkMetrics(address);
+    LinkMetrics* link = getLinkMetricsInternal(address);
 
     if (link->lastUpdate == 0) {
         link->rssi = rssi;
@@ -78,14 +104,14 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
     if (!link->seqInitialized) {
         link->lastSeqNum = seqNum;
         link->seqInitialized = true;
-        updateETX(address, true);
+        updateETXInternal(address, true);
         ESP_LOGI(TAG, "Link %04X: First packet (seq=%lu), initializing ETX tracking",
                      address, seqNum);
     } else {
         uint32_t expectedSeq = link->lastSeqNum + 1;
 
         if (seqNum == expectedSeq) {
-            updateETX(address, true);
+            updateETXInternal(address, true);
             link->lastSeqNum = seqNum;
         } else if (seqNum > expectedSeq) {
             uint32_t gap = seqNum - expectedSeq;
@@ -97,17 +123,17 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
             }
 
             for (uint32_t i = 0; i < gap && i < ETX_WINDOW_SIZE; i++) {
-                updateETX(address, false);
+                updateETXInternal(address, false);
                 link->totalTxFailures++;
             }
 
-            updateETX(address, true);
+            updateETXInternal(address, true);
             link->lastSeqNum = seqNum;
 
             ESP_LOGW(TAG, "Link %04X: GAP DETECTED! Expected seq=%lu, got seq=%lu, lost %lu packets",
                          address, expectedSeq, seqNum, gap);
         } else {
-            updateETX(address, true);
+            updateETXInternal(address, true);
             link->lastSeqNum = seqNum;
             ESP_LOGD(TAG, "Link %04X: Out-of-order packet (expected %lu, got %lu), possibly reordered",
                          address, expectedSeq, seqNum);
@@ -116,10 +142,21 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
 
     ESP_LOGD(TAG, "Link %04X: RSSI=%d dBm, SNR=%d dB, ETX=%.2f, Seq=%lu",
                  address, link->rssi, link->snr, link->etx, seqNum);
+
+    xSemaphoreGive(mutex_);
 }
 
 void ETXTracker::updateETX(uint16_t address, bool success) {
-    LinkMetrics* link = getLinkMetrics(address);
+    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
+        ESP_LOGW(TAG, "Failed to acquire mutex in updateETX");
+        return;
+    }
+    updateETXInternal(address, success);
+    xSemaphoreGive(mutex_);
+}
+
+void ETXTracker::updateETXInternal(uint16_t address, bool success) {
+    LinkMetrics* link = getLinkMetricsInternal(address);
     
     link->txWindow[link->windowIndex] = success;
     link->windowIndex = (link->windowIndex + 1) % ETX_WINDOW_SIZE;

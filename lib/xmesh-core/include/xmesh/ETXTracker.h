@@ -2,6 +2,8 @@
 #define XMESH_ETX_TRACKER_H
 
 #include <stdint.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 namespace xmesh {
 
@@ -62,6 +64,7 @@ struct LinkMetrics {
 class ETXTracker {
 public:
     ETXTracker();
+    ~ETXTracker();
 
     /**
      * @brief Update link metrics for a neighbor.
@@ -93,9 +96,13 @@ public:
     uint8_t getNumTrackedLinks() const { return numTrackedLinks; }
 
 private:
+    LinkMetrics* getLinkMetricsInternal(uint16_t address);
+    void updateETXInternal(uint16_t address, bool success);
+
     static constexpr uint8_t MAX_TRACKED_LINKS = 10;
     LinkMetrics linkMetrics[MAX_TRACKED_LINKS];
     uint8_t numTrackedLinks;
+    SemaphoreHandle_t mutex_;
 };
 
 } // namespace xmesh
