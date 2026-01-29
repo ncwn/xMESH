@@ -11,22 +11,30 @@ xMESH is a professional-grade LoRa mesh network designed for production IoT depl
 ## Module List & File Locations
 
 ### 1. xmesh-core (`lib/xmesh-core/`)
-Implementation of the Protocol 3 routing stack.
-- `CostRouter.h/cpp`: Multi-metric path selection logic.
-- `TrickleScheduler.h/cpp`: RFC 6206 adaptive HELLO scheduling.
-- `ETXTracker.h/cpp`: Zero-overhead Link Quality Estimation (LQE).
-- `GatewayBalancer.h/cpp`: Active load sharing and neighbor health monitoring.
-- `MeshConfig.h`: Routing parameter definitions.
+Implementation of the Protocol 3 routing stack (~1,506 lines).
+- Headers: `lib/xmesh-core/include/xmesh/`
+- Sources: `lib/xmesh-core/src/`
+- `CostRouter.h/cpp`: Multi-metric path selection logic (166 lines).
+- `TrickleScheduler.h/cpp`: RFC 6206 adaptive HELLO scheduling (295 lines).
+- `ETXTracker.h/cpp`: Zero-overhead Link Quality Estimation (271 lines).
+- `GatewayBalancer.h/cpp`: Active load sharing and neighbor health monitoring (484 lines).
+- `MobilityDetector.h/cpp`: SNR variance-based mobility state machine (240 lines).
+- `MeshConfig.h`: Routing parameter definitions (50 lines).
 
 ### 2. xmesh-hal (`lib/xmesh-hal/`)
-Hardware Abstraction Layer for Heltec WiFi LoRa 32 V3.
-- `Display.h/cpp`: SSD1306 OLED drivers and status rendering.
-- `Sensors.h/cpp`: Environmental sensor interfaces (PMS7003, GPS).
+Hardware Abstraction Layer for Heltec WiFi LoRa 32 V3 (~618 lines).
+- Headers: `lib/xmesh-hal/include/xmesh/hal/`
+- Sources: `lib/xmesh-hal/src/`
+- `Display.h/cpp`: SSD1306 OLED drivers and status rendering (248 lines).
+- `Sensors.h/cpp`: PMS7003 + GPS drivers with power management (296 lines).
+- `SensorPacket.h`: 23-byte mesh packet structure for sensor data (44 lines).
 
 ### 3. xmesh-ota (`lib/xmesh-ota/`)
-ESP-IDF native Over-The-Air update integration.
-- `OTAManager.h/cpp`: WiFi-based update lifecycle management.
-- `VersionControl.h/cpp`: Semantic versioning utilities.
+ESP-IDF native Over-The-Air update integration (~572 lines).
+- Headers: `lib/xmesh-ota/include/ota/`
+- Sources: `lib/xmesh-ota/src/`
+- `OTAManager.h/cpp`: ArduinoOTA + rollback safety (407 lines).
+- `VersionControl.h/cpp`: Semantic versioning utilities (147 lines).
 
 ### 4. Production Firmware (`firmware/production/`)
 Reference implementation for field deployment.
