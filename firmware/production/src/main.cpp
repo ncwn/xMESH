@@ -13,6 +13,9 @@
 #include <xmesh/ETXTracker.h>
 #include <xmesh/GatewayBalancer.h>
 
+// LoRaMesher routing service for callback registration
+#include "services/RoutingTableService.h"
+
 struct XMeshConfig {
     bool isGateway;
     char wifiSsid[33];
@@ -49,6 +52,51 @@ struct TestPacket {
 
 TestPacket* testPacket = new TestPacket;
 uint32_t packetCounter = 0;
+
+// CostCalculationCallback signature: (hops, via, destAddr) -> cost
+float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
+    int8_t snr = 0;
+    int16_t rssi = -100;
+    float etx = ETX_DEFAULT;
+    float gatewayBias = 0.0f;
+    
+    RouteNode* node = RoutingTableService::findNode(via);
+    if (node != nullptr) {
+        snr = node->receivedSNR;
+        rssi = static_cast<int16_t>(snr * 4 - 110);
+    }
+    
+    xmesh::LinkMetrics* metrics = etxTracker.getLinkMetrics(via);
+    if (metrics != nullptr) {
+        etx = metrics->etx;
+        if (metrics->rssi != 0) {
+            rssi = metrics->rssi;
+        }
+        if (metrics->snr != 0) {
+            snr = metrics->snr;
+        }
+    }
+    
+    float cost = costRouter.calculateCost(hops, via, destAddr, rssi, snr, etx, gatewayBias);
+    
+    ESP_LOGD(TAG, "Cost for %04X via %04X: %.2f (hops=%d, rssi=%d, snr=%d, etx=%.2f)", 
+             destAddr, via, cost, hops, rssi, snr, etx);
+    
+    return cost;
+}
+
+void helloReceivedCallback(uint16_t srcAddr) {
+    trickle.onHelloReceived();
+    
+    RouteNode* node = RoutingTableService::findNode(srcAddr);
+    if (node != nullptr && node->networkNode.metric == 1) {
+        int8_t snr = node->receivedSNR;
+        int16_t rssi = static_cast<int16_t>(snr * 4 - 110);
+        etxTracker.updateLinkMetrics(srcAddr, rssi, snr, packetCounter);
+    }
+    
+    gatewayBalancer.updateNeighborHealth(srcAddr);
+}
 
 void processReceivedPackets(void*) {
     for (;;) {
@@ -384,6 +432,11 @@ void setup() {
     
     radio.start();
     Serial.printf("[LoRaMesher] Radio started\n");
+    
+    RoutingTableService::setCostCalculationCallback(costCalculationCallback);
+    RoutingTableService::setHelloReceivedCallback(helloReceivedCallback);
+    Serial.printf("[xMESH] Cost-based routing enabled (W1=%.1f, W2=%.1f, W3=%.1f, W4=%.1f, W5=%.1f)\n",
+                  W1_HOP_COUNT, W2_RSSI, W3_SNR, W4_ETX, W5_GATEWAY_BIAS);
     
     // WiFi and OTA for gateway nodes
     initWiFi();
