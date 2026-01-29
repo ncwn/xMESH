@@ -79,7 +79,7 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
         link->lastSeqNum = seqNum;
         link->seqInitialized = true;
         updateETX(address, true);
-        Serial.printf("Link %04X: First packet (seq=%lu), initializing ETX tracking\n",
+        ESP_LOGI(TAG, "Link %04X: First packet (seq=%lu), initializing ETX tracking",
                      address, seqNum);
     } else {
         uint32_t expectedSeq = link->lastSeqNum + 1;
@@ -104,17 +104,17 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
             updateETX(address, true);
             link->lastSeqNum = seqNum;
 
-            Serial.printf("Link %04X: GAP DETECTED! Expected seq=%lu, got seq=%lu, lost %lu packets\n",
+            ESP_LOGW(TAG, "Link %04X: GAP DETECTED! Expected seq=%lu, got seq=%lu, lost %lu packets",
                          address, expectedSeq, seqNum, gap);
         } else {
             updateETX(address, true);
             link->lastSeqNum = seqNum;
-            Serial.printf("Link %04X: Out-of-order packet (expected %lu, got %lu), possibly reordered\n",
+            ESP_LOGD(TAG, "Link %04X: Out-of-order packet (expected %lu, got %lu), possibly reordered",
                          address, expectedSeq, seqNum);
         }
     }
 
-    Serial.printf("Link %04X: RSSI=%d dBm, SNR=%d dB, ETX=%.2f, Seq=%lu\n",
+    ESP_LOGD(TAG, "Link %04X: RSSI=%d dBm, SNR=%d dB, ETX=%.2f, Seq=%lu",
                  address, link->rssi, link->snr, link->etx, seqNum);
 }
 
@@ -157,7 +157,7 @@ void ETXTracker::updateETX(uint16_t address, bool success) {
     if (link->etx > 10.0) link->etx = 10.0;
     
     if (link->totalTxAttempts % 10 == 0) {
-        Serial.printf("ETX updated for %04X: %.2f (window: %d/%d, instant: %.2f, lifetime: %.1f%%)\n",
+        ESP_LOGD(TAG, "ETX updated for %04X: %.2f (window: %d/%d, instant: %.2f, lifetime: %.1f%%)",
                      address, link->etx, successCount, link->windowFilled, instantETX,
                      (float)link->totalTxSuccess / link->totalTxAttempts * 100);
     }

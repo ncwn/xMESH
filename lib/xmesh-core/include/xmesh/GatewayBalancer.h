@@ -186,6 +186,12 @@ public:
      */
     bool getIsGateway() const { return isGatewayNode; }
 
+    // Runtime threshold adjustment for mobility
+    void setWarningThreshold(uint32_t ms);
+    void setDetectionThreshold(uint32_t ms);
+    uint32_t getWarningThreshold() const;
+    uint32_t getDetectionThreshold() const;
+
 private:
     // Local gateway load tracking
     GatewayLoadState localLoadState;
@@ -198,12 +204,10 @@ private:
 
     // Gateway balancing configuration (from research config.h)
     static constexpr uint32_t MIN_GATEWAY_LOAD_WINDOW_MS = 1000;   ///< Minimum sampling window
-    static constexpr float LOAD_SWITCH_THRESHOLD = 0.25f;          ///< Min pkt/min delta for load-based switch
-    static constexpr uint8_t MAX_GATEWAY_CANDIDATES = 10;          ///< Max gateways to evaluate
 
     // Neighbor health monitoring thresholds
-    static constexpr uint32_t DETECTION_THRESHOLD_MS = 360000;     ///< 6 min (miss 2 safety HELLOs @ 180s)
-    static constexpr uint32_t WARNING_THRESHOLD_MS = 180000;       ///< 3 min (miss 1 safety HELLO)
+    uint32_t detectionThresholdMs_ = 360000;
+    uint32_t warningThresholdMs_ = 180000;
     static constexpr uint32_t STATUS_LOG_INTERVAL_MS = 300000;     ///< 5 min periodic status
 
     // Internal state for periodic logging

@@ -98,7 +98,7 @@ void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
         uint32_t silence = now - neighbors[idx].lastHeard;
 
         if (neighbors[idx].failureFlagged) {
-            Serial.printf("[HEALTH] Neighbor %04X: RECOVERED after %lus offline\n",
+            ESP_LOGI(TAG, "Neighbor %04X: RECOVERED after %lus offline",
                          addr, silence/1000);
         }
 
@@ -106,17 +106,17 @@ void GatewayBalancer::updateNeighborHealth(uint16_t addr) {
         neighbors[idx].missedHellos = 0;
         neighbors[idx].failureFlagged = false;
 
-        Serial.printf("[HEALTH] Neighbor %04X: Heartbeat (silence: %lus, status: HEALTHY)\n",
+        ESP_LOGD(TAG, "Neighbor %04X: Heartbeat (silence: %lus, status: HEALTHY)",
                      addr, silence/1000);
         return;
     }
 
     if (addNeighbor(addr)) {
         neighbors[numNeighbors - 1].lastHeard = now;
-        Serial.printf("[HEALTH] NEW neighbor %04X detected (total neighbors: %d)\n",
+        ESP_LOGI(TAG, "NEW neighbor %04X detected (total neighbors: %d)",
                      addr, numNeighbors);
     } else {
-        Serial.printf("[HEALTH] WARNING: Cannot track neighbor %04X (max %d reached)\n", 
+        ESP_LOGW(TAG, "Cannot track neighbor %04X (max %d reached)", 
                      addr, maxNeighbors);
     }
 }
@@ -132,17 +132,16 @@ uint8_t GatewayBalancer::monitorNeighborHealth() {
 
     if (now - lastStatusLog > STATUS_LOG_INTERVAL_MS) {
         lastStatusLog = now;
-        Serial.printf("\n[HEALTH] ==== Neighbor Health Status (Tracking: %d neighbors) ====\n", numNeighbors);
-        Serial.printf("[HEALTH] Free heap: %d bytes\n", freeHeap);
+        ESP_LOGI(TAG, "==== Neighbor Health Status (Tracking: %d neighbors) ====", numNeighbors);
+        ESP_LOGI(TAG, "Free heap: %d bytes", freeHeap);
         for (uint8_t i = 0; i < numNeighbors; i++) {
             if (neighbors[i].address == 0) continue;
             uint32_t silence = now - neighbors[i].lastHeard;
-            Serial.printf("[HEALTH]   %04X: silence=%lus, missed=%d, status=%s\n",
+            ESP_LOGI(TAG, "  %04X: silence=%lus, missed=%d, status=%s",
                          neighbors[i].address, silence/1000,
                          neighbors[i].missedHellos,
                          neighbors[i].failureFlagged ? "FAILED" : "HEALTHY");
         }
-        Serial.println("[HEALTH] =========================================================\n");
     }
 
     for (uint8_t i = 0; i < numNeighbors; i++) {
@@ -151,33 +150,59 @@ uint8_t GatewayBalancer::monitorNeighborHealth() {
 
         uint32_t silence = now - n->lastHeard;
 
-        if (silence > WARNING_THRESHOLD_MS && silence < DETECTION_THRESHOLD_MS && n->missedHellos == 0) {
+        if (silence > warningThresholdMs_ && silence < detectionThresholdMs_ && n->missedHellos == 0) {
             n->missedHellos = 1;
-            Serial.printf("[HEALTH] Neighbor %04X: WARNING - %lus silence (miss 1 HELLO)\n",
+            ESP_LOGW(TAG, "Neighbor %04X: WARNING - %lus silence (miss 1 HELLO)",
                          n->address, silence/1000);
-            Serial.printf("[HEALTH]   Detection threshold: %lus remaining until FAULT\n",
-                         (DETECTION_THRESHOLD_MS - silence)/1000);
+            ESP_LOGD(TAG, "  Detection threshold: %lus remaining until FAULT",
+                         (detectionThresholdMs_ - silence)/1000);
         }
 
-        if (silence > DETECTION_THRESHOLD_MS && !n->failureFlagged) {
+        if (silence > detectionThresholdMs_ && !n->failureFlagged) {
             n->missedHellos = 2;
             n->failureFlagged = true;
             failedCount++;
 
-            Serial.printf("\n[FAULT] ========================================\n");
-            Serial.printf("[FAULT] Neighbor %04X: FAILURE DETECTED\n", n->address);
-            Serial.printf("[FAULT]   Silence duration: %lus (%lu min %lu sec)\n",
+            ESP_LOGE(TAG, "========================================");
+            ESP_LOGE(TAG, "Neighbor %04X: FAILURE DETECTED", n->address);
+            ESP_LOGE(TAG, "  Silence duration: %lus (%lu min %lu sec)",
                          silence/1000, silence/60000, (silence%60000)/1000);
-            Serial.printf("[FAULT]   Missed HELLOs: %d (expected every 180s)\n", n->missedHellos);
-            Serial.printf("[FAULT] ========================================\n\n");
+            ESP_LOGE(TAG, "  Missed HELLOs: %d (expected every 180s)", n->missedHellos);
+            ESP_LOGE(TAG, "========================================");
 
-            Serial.println("[RECOVERY] Node failure detected - application should remove failed route");
-            Serial.printf("[RECOVERY] Failed neighbor: %04X\n", n->address);
-            Serial.printf("[RECOVERY] ========================================\n\n");
+            ESP_LOGW(TAG, "Node failure detected - application should remove failed route");
+            ESP_LOGW(TAG, "Failed neighbor: %04X", n->address);
+            ESP_LOGW(TAG, "========================================");
         }
     }
 
     return failedCount;
+}
+
+void GatewayBalancer::setWarningThreshold(uint32_t ms) {
+    if (ms >= detectionThresholdMs_) {
+        ESP_LOGE(TAG, "setWarningThreshold failed: %lu >= detection (%lu)", ms, detectionThresholdMs_);
+        return;
+    }
+    ESP_LOGI(TAG, "Warning threshold: %lu -> %lu ms", warningThresholdMs_, ms);
+    warningThresholdMs_ = ms;
+}
+
+void GatewayBalancer::setDetectionThreshold(uint32_t ms) {
+    if (ms <= warningThresholdMs_) {
+        ESP_LOGE(TAG, "setDetectionThreshold failed: %lu <= warning (%lu)", ms, warningThresholdMs_);
+        return;
+    }
+    ESP_LOGI(TAG, "Detection threshold: %lu -> %lu ms", detectionThresholdMs_, ms);
+    detectionThresholdMs_ = ms;
+}
+
+uint32_t GatewayBalancer::getWarningThreshold() const {
+    return warningThresholdMs_;
+}
+
+uint32_t GatewayBalancer::getDetectionThreshold() const {
+    return detectionThresholdMs_;
 }
 
 bool GatewayBalancer::isNeighborFailed(uint16_t addr) const {
