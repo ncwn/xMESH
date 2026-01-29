@@ -22,6 +22,8 @@ struct XMeshConfig {
 // Forward declarations
 void initWiFi();
 void initOTA();
+void connectWiFi();
+void disconnectWiFi();
 
 static XMeshConfig config;
 static bool wifiConnected = false;
@@ -185,6 +187,13 @@ void processSerialCommands() {
         LoraMesher::getInstance().removeGatewayRole();
         Serial.println("[CMD] Gateway mode: OFF");
     }
+    else if (command == "wifi on") {
+        connectWiFi();
+        initOTA();
+    }
+    else if (command == "wifi off") {
+        disconnectWiFi();
+    }
     else if (command == "wifi scan") {
         Serial.println("[WiFi] Scanning...");
         WiFi.mode(WIFI_STA);
@@ -197,10 +206,6 @@ void processSerialCommands() {
                 i+1, WiFi.SSID(i).c_str(), WiFi.RSSI(i),
                 WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "open" : "secured");
         }
-    }
-    else if (command == "wifi connect") {
-        initWiFi();
-        initOTA();
     }
     else if (command.startsWith("wifi ")) {
         String args = command.substring(5);
@@ -219,7 +224,7 @@ void processSerialCommands() {
         Serial.println("==== xMESH Status ====");
         Serial.printf("Node Address: %04X\n", radio.getLocalAddress());
         Serial.printf("Gateway Mode: %s\n", config.isGateway ? "YES" : "NO");
-        Serial.printf("WiFi SSID: %s\n", config.wifiSsid);
+        Serial.printf("WiFi: %s\n", wifiConnected ? WiFi.localIP().toString().c_str() : "OFF");
         Serial.printf("Neighbors: %d\n", gatewayBalancer.getNeighborCount());
         Serial.printf("Routing Table: %d entries\n", radio.routingTableSize());
         Serial.printf("Trickle TX: %lu, Suppressed: %lu\n", 
@@ -235,8 +240,8 @@ void processSerialCommands() {
         Serial.println("Available commands:");
         Serial.println("  gateway on/off  - Toggle gateway mode");
         Serial.println("  wifi SSID PASS  - Set WiFi credentials");
+        Serial.println("  wifi on/off     - Enable/disable WiFi for OTA");
         Serial.println("  wifi scan       - Scan for WiFi networks");
-        Serial.println("  wifi connect    - Retry WiFi connection");
         Serial.println("  status          - Show node status");
         Serial.println("  reset trickle   - Reset Trickle timer");
         Serial.println("  help            - Show this help");
@@ -252,19 +257,22 @@ void initWiFi() {
         ESP_LOGI(TAG, "Not a gateway - skipping WiFi initialization");
         return;
     }
-    
+    connectWiFi();
+}
+
+void connectWiFi() {
     if (strlen(config.wifiSsid) == 0) {
         ESP_LOGW(TAG, "No WiFi SSID configured - use 'wifi SSID PASSWORD' command");
+        Serial.println("[WiFi] No SSID configured");
         return;
     }
     
     ESP_LOGI(TAG, "Connecting to WiFi: %s", config.wifiSsid);
-    Serial.printf("[WiFi] SSID: '%s' (len=%d), Pass len=%d\n", 
-                  config.wifiSsid, strlen(config.wifiSsid), strlen(config.wifiPassword));
+    Serial.printf("[WiFi] Connecting to '%s'...\n", config.wifiSsid);
     WiFi.mode(WIFI_STA);
     WiFi.begin(config.wifiSsid, config.wifiPassword);
     
-    int timeout = 15;  // 15 seconds timeout
+    int timeout = 15;
     while (WiFi.status() != WL_CONNECTED && timeout > 0) {
         delay(1000);
         Serial.print(".");
@@ -318,6 +326,18 @@ void initOTA() {
     otaInitialized = true;
     ESP_LOGI(TAG, "OTA service started - hostname: %s", hostname.c_str());
     Serial.printf("[OTA] Ready - hostname: %s\n", hostname.c_str());
+}
+
+void disconnectWiFi() {
+    if (otaInitialized) {
+        ArduinoOTA.end();
+        otaInitialized = false;
+    }
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+    wifiConnected = false;
+    ESP_LOGI(TAG, "WiFi disconnected");
+    Serial.println("[WiFi] Disconnected");
 }
 
 void setup() {
