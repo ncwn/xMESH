@@ -9,6 +9,7 @@
 #include <ota/OTAManager.h>
 #include <PubSubClient.h>
 
+#include <cfloat>
 #include <xmesh/TrickleScheduler.h>
 #include <xmesh/hal/Sensors.h>
 #include <xmesh/hal/SensorPacket.h>
@@ -74,7 +75,7 @@ struct TestPacket {
     uint32_t counter;
 };
 
-TestPacket* testPacket = new TestPacket;
+static TestPacket testPacket;
 uint32_t packetCounter = 0;
 
 const char* getNodeModeName(xmesh::hal::NodeMode mode) {
@@ -88,6 +89,12 @@ const char* getNodeModeName(xmesh::hal::NodeMode mode) {
 
 // CostCalculationCallback signature: (hops, via, destAddr) -> cost
 float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
+    // Reject routes through failed neighbors
+    if (gatewayBalancer.isNeighborFailed(via)) {
+        ESP_LOGD(TAG, "Rejecting route via %04X - neighbor failed", via);
+        return FLT_MAX;
+    }
+    
     int8_t snr = 0;
     int16_t rssi = -100;
     float etx = ETX_DEFAULT;
@@ -119,9 +126,19 @@ float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
 }
 
 void helloReceivedCallback(uint16_t srcAddr) {
+    // Check if this is a NEW neighbor (topology change = inconsistency)
+    RouteNodeCopy nodeCopy;
+    bool wasKnown = RoutingTableService::findNodeCopy(srcAddr, nodeCopy);
+    
+    if (!wasKnown) {
+        // New neighbor detected - this is an inconsistency per RFC 6206
+        ESP_LOGD(TAG, "New neighbor %04X detected - Trickle reset", srcAddr);
+        trickle.onInconsistentHello();
+    }
+    
     trickle.onHelloReceived();
     
-    RouteNodeCopy nodeCopy;
+    // Re-fetch after processing (node may now be in table)
     if (RoutingTableService::findNodeCopy(srcAddr, nodeCopy) && nodeCopy.metric == 1) {
         int8_t snr = nodeCopy.receivedSNR;
         int16_t rssi = static_cast<int16_t>(snr * 4 - 110);
@@ -444,10 +461,10 @@ void processSerialCommands() {
             Serial.println("[CMD] Usage: send XXXX (hex address)");
         } else {
             LoraMesher& radio = LoraMesher::getInstance();
-            testPacket->counter = packetCounter++;
-            radio.createPacketAndSend(destAddr, testPacket, 1);
+            testPacket.counter = packetCounter++;
+            radio.createPacketAndSend(destAddr, &testPacket, 1);
             dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
-            Serial.printf("[CMD] Sent packet #%lu to %04X\n", testPacket->counter, destAddr);
+            Serial.printf("[CMD] Sent packet #%lu to %04X\n", testPacket.counter, destAddr);
         }
     }
     else if (command == "routes") {
@@ -860,8 +877,8 @@ void loop() {
         
         LoraMesher& radio = LoraMesher::getInstance();
         
-        testPacket->counter = packetCounter++;
-        radio.createPacketAndSend(BROADCAST_ADDR, testPacket, 1);
+        testPacket.counter = packetCounter++;
+        radio.createPacketAndSend(BROADCAST_ADDR, &testPacket, 1);
         
         dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
     }
@@ -915,12 +932,20 @@ void loop() {
     if (now - lastMonitorCheck >= MONITOR_INTERVAL_MS) {
         lastMonitorCheck = now;
         
+        LoraMesher& radio = LoraMesher::getInstance();
         uint8_t failedNeighbors = gatewayBalancer.monitorNeighborHealth();
         if (failedNeighbors > 0) {
             Serial.printf("[GatewayBalancer] Detected %d failed neighbors\n", failedNeighbors);
+            
+            for (uint8_t i = 0; i < gatewayBalancer.getNeighborCount(); i++) {
+                uint16_t addr = gatewayBalancer.getNeighborAddress(i);
+                if (addr != 0 && gatewayBalancer.isNeighborFailed(addr)) {
+                    radio.deleteRoute(addr);
+                    ESP_LOGW(TAG, "Removed route for failed neighbor %04X", addr);
+                }
+            }
         }
         
-        LoraMesher& radio = LoraMesher::getInstance();
         Serial.printf("[Status] Tracked Links: %d, Neighbors: %d, Routing Table Size: %d\n",
                      etxTracker.getNumTrackedLinks(),
                      gatewayBalancer.getNeighborCount(),
