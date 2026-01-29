@@ -7,9 +7,11 @@
 #include <nvs.h>
 #include <WiFi.h>
 #include <ota/OTAManager.h>
+#include <PubSubClient.h>
 
 #include <xmesh/TrickleScheduler.h>
 #include <xmesh/hal/Sensors.h>
+#include <xmesh/hal/SensorPacket.h>
 #include <xmesh/CostRouter.h>
 #include <xmesh/ETXTracker.h>
 #include <xmesh/GatewayBalancer.h>
@@ -57,7 +59,16 @@ xmesh::MobilityDetector mobilityDetector;
 DutyCycleBudget dutyCycleBudget;
 
 uint32_t lastMonitorCheck = 0;
+uint32_t lastSensorTx = 0;
 constexpr uint32_t MONITOR_INTERVAL_MS = 60000;
+
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
+char mqttBroker[64] = "";
+uint16_t mqttPort = MQTT_PORT_DEFAULT;
+bool mqttEnabled = false;
+uint32_t lastMqttReconnect = 0;
+uint32_t sensorTxCount = 0;
 
 struct TestPacket {
     uint32_t counter;
@@ -65,6 +76,15 @@ struct TestPacket {
 
 TestPacket* testPacket = new TestPacket;
 uint32_t packetCounter = 0;
+
+const char* getNodeModeName(xmesh::hal::NodeMode mode) {
+    switch (mode) {
+        case xmesh::hal::NodeMode::SENSOR: return "SENSOR";
+        case xmesh::hal::NodeMode::RELAY: return "RELAY";
+        case xmesh::hal::NodeMode::GATEWAY: return "GATEWAY";
+        default: return "UNKNOWN";
+    }
+}
 
 // CostCalculationCallback signature: (hops, via, destAddr) -> cost
 float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
@@ -141,12 +161,60 @@ void updateDisplay() {
         display.println(WiFi.localIP().toString());
     }
     
-    if (mobilityDetector.isEnabled()) {
-        display.print("Mob: ");
-        display.println(mobilityDetector.getStateName());
+    auto nodeMode = sensors.getNodeMode();
+    display.print("Mode: ");
+    display.println(getNodeModeName(nodeMode));
+    
+    if (sensors.isPMSDetected()) {
+        auto aq = sensors.readAirQuality();
+        if (aq.valid) {
+            display.print("PM2.5: ");
+            display.print(aq.pm2_5);
+            display.println(" ug/m3");
+        }
     }
     
     display.display();
+}
+
+void publishSensorToMQTT(uint16_t srcAddr, const xmesh::hal::SensorPacket* sp) {
+    if (!mqttEnabled || !mqttClient.connected()) return;
+    
+    LoraMesher& radio = LoraMesher::getInstance();
+    char topic[64];
+    snprintf(topic, sizeof(topic), "%s/%04X/%04X", MQTT_TOPIC_PREFIX, radio.getLocalAddress(), srcAddr);
+    
+    char json[256];
+    snprintf(json, sizeof(json),
+        "{\"version\":%d,\"node\":\"%04X\",\"gateway\":\"%04X\",\"timestamp\":%lu,"
+        "\"pm\":{\"pm1_0\":%u,\"pm2_5\":%u,\"pm10\":%u,\"valid\":%s},"
+        "\"gps\":{\"lat\":%.7f,\"lon\":%.7f,\"alt\":%d,\"sats\":%u,\"valid\":%s}}",
+        sp->version, srcAddr, radio.getLocalAddress(), sp->timestamp,
+        sp->pm1_0, sp->pm2_5, sp->pm10, (sp->flags & xmesh::hal::FLAG_PMS_VALID) ? "true" : "false",
+        sp->latitude / 1e7, sp->longitude / 1e7, sp->altitude, sp->satellites,
+        (sp->flags & xmesh::hal::FLAG_GPS_VALID) ? "true" : "false");
+    
+    mqttClient.publish(topic, json);
+    ESP_LOGI(TAG, "MQTT published to %s", topic);
+}
+
+void mqttReconnect() {
+    if (strlen(mqttBroker) == 0) return;
+    if (millis() - lastMqttReconnect < MQTT_RECONNECT_INTERVAL_MS) return;
+    lastMqttReconnect = millis();
+    
+    ESP_LOGI(TAG, "MQTT connecting to %s:%d", mqttBroker, mqttPort);
+    
+    LoraMesher& radio = LoraMesher::getInstance();
+    char clientId[16];
+    snprintf(clientId, sizeof(clientId), "xmesh-%04X", radio.getLocalAddress());
+    
+    if (mqttClient.connect(clientId)) {
+        ESP_LOGI(TAG, "MQTT connected");
+        mqttEnabled = true;
+    } else {
+        ESP_LOGW(TAG, "MQTT connection failed, rc=%d", mqttClient.state());
+    }
 }
 
 void processReceivedPackets(void*) {
@@ -155,17 +223,27 @@ void processReceivedPackets(void*) {
         
         LoraMesher& radio = LoraMesher::getInstance();
         while (radio.getReceivedQueueSize() > 0) {
-            Serial.printf("[xMESH] Processing received packet\n");
+            AppPacket<uint8_t>* rawPacket = radio.getNextAppPacket<uint8_t>();
             
-            AppPacket<TestPacket>* packet = radio.getNextAppPacket<TestPacket>();
-            
-            Serial.printf("[xMESH] Received counter=%lu from %04X\n", 
-                         packet->payload->counter, packet->src);
+            if (rawPacket->payloadSize == sizeof(xmesh::hal::SensorPacket)) {
+                xmesh::hal::SensorPacket* sp = reinterpret_cast<xmesh::hal::SensorPacket*>(rawPacket->payload);
+                if (sp->version == xmesh::hal::SENSOR_PACKET_VERSION) {
+                    ESP_LOGI(TAG, "SensorPacket from %04X: PM2.5=%d, lat=%ld, lon=%ld",
+                             rawPacket->src, sp->pm2_5, sp->latitude, sp->longitude);
+                    
+                    if (config.isGateway && ENABLE_MQTT_FORWARD) {
+                        publishSensorToMQTT(rawPacket->src, sp);
+                    }
+                }
+            } else {
+                TestPacket* tp = reinterpret_cast<TestPacket*>(rawPacket->payload);
+                ESP_LOGD(TAG, "TestPacket from %04X: counter=%lu", rawPacket->src, tp->counter);
+            }
             
             trickle.onHelloReceived();
-            gatewayBalancer.updateNeighborHealth(packet->src);
+            gatewayBalancer.updateNeighborHealth(rawPacket->src);
             
-            radio.deletePacket(packet);
+            radio.deletePacket(rawPacket);
         }
     }
 }
@@ -429,6 +507,110 @@ void processSerialCommands() {
         Serial.printf("Exhausted: %s\n", dutyCycleBudget.isExhausted() ? "YES" : "NO");
         Serial.println("====================");
     }
+    // Sensor commands
+    else if (command == "sensors status") {
+        Serial.println("==== Sensor Status ====");
+        Serial.printf("Node Mode: %s\n", getNodeModeName(sensors.getNodeMode()));
+        Serial.printf("PMS Detected: %s\n", sensors.isPMSDetected() ? "YES" : "NO");
+        Serial.printf("GPS Detected: %s\n", sensors.isGPSDetected() ? "YES" : "NO");
+        if (sensors.isPMSDetected()) {
+            Serial.printf("PMS State: %s\n", 
+                sensors.getPMSState() == xmesh::hal::PMSState::OFF ? "OFF" :
+                sensors.getPMSState() == xmesh::hal::PMSState::WARMING ? "WARMING" : "READY");
+        }
+        Serial.printf("Sensor TX Count: %lu\n", sensorTxCount);
+        Serial.println("=======================");
+    }
+    else if (command == "sensors detect") {
+        Serial.println("[SENSORS] Re-running detection...");
+        sensors.detectPMS(PMS_DETECT_TIMEOUT_MS);
+        sensors.detectGPS(GPS_DETECT_TIMEOUT_MS);
+        Serial.printf("[SENSORS] PMS: %s, GPS: %s\n",
+            sensors.isPMSDetected() ? "detected" : "not found",
+            sensors.isGPSDetected() ? "detected" : "not found");
+        Serial.printf("[SENSORS] Node mode: %s\n", getNodeModeName(sensors.getNodeMode()));
+    }
+    else if (command == "sensors read") {
+        if (!sensors.isPMSDetected()) {
+            Serial.println("[SENSORS] No PMS sensor detected");
+        } else if (sensors.getPMSState() != xmesh::hal::PMSState::READY) {
+            Serial.println("[SENSORS] PMS not ready - use 'sensors power on' and wait 30s");
+        } else {
+            auto aq = sensors.readAirQuality();
+            Serial.printf("[SENSORS] PM1.0=%d, PM2.5=%d, PM10=%d\n", aq.pm1_0, aq.pm2_5, aq.pm10);
+        }
+        if (sensors.isGPSDetected()) {
+            auto gps = sensors.readGPS();
+            Serial.printf("[SENSORS] GPS: lat=%ld, lon=%ld, alt=%d, sats=%d\n",
+                gps.latitude, gps.longitude, gps.altitude, gps.satellites);
+        }
+    }
+    else if (command == "sensors send") {
+        if (sensors.getNodeMode() == xmesh::hal::NodeMode::RELAY) {
+            Serial.println("[SENSORS] No sensors - cannot send");
+        } else if (sensors.getPMSState() != xmesh::hal::PMSState::READY) {
+            Serial.println("[SENSORS] PMS not ready - wait for warmup");
+        } else {
+            LoraMesher& radio = LoraMesher::getInstance();
+            auto aq = sensors.readAirQuality();
+            auto gps = sensors.readGPS();
+            xmesh::hal::SensorPacket sp = {};
+            sp.version = xmesh::hal::SENSOR_PACKET_VERSION;
+            sp.flags = xmesh::hal::FLAG_PMS_VALID;
+            if (gps.satellites > 0) sp.flags |= xmesh::hal::FLAG_GPS_VALID;
+            sp.pm1_0 = aq.pm1_0;
+            sp.pm2_5 = aq.pm2_5;
+            sp.pm10 = aq.pm10;
+            sp.latitude = gps.latitude;
+            sp.longitude = gps.longitude;
+            sp.altitude = gps.altitude;
+            sp.satellites = gps.satellites;
+            sp.timestamp = millis() / 1000;
+            radio.createPacketAndSend(BROADCAST_ADDR, reinterpret_cast<uint8_t*>(&sp), sizeof(sp));
+            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(sp)));
+            sensorTxCount++;
+            Serial.printf("[SENSORS] Force TX #%lu: PM2.5=%d\n", sensorTxCount, sp.pm2_5);
+        }
+    }
+    else if (command == "sensors power on") {
+        if (!sensors.isPMSDetected()) {
+            Serial.println("[SENSORS] No PMS sensor detected");
+        } else {
+            sensors.setPMSPower(true);
+            Serial.println("[SENSORS] PMS power ON - warming up (30s)");
+        }
+    }
+    else if (command == "sensors power off") {
+        if (!sensors.isPMSDetected()) {
+            Serial.println("[SENSORS] No PMS sensor detected");
+        } else {
+            sensors.setPMSPower(false);
+            Serial.println("[SENSORS] PMS power OFF");
+        }
+    }
+    // MQTT commands
+    else if (command.startsWith("mqtt ") && command.length() > 5 && command.substring(5) != "status") {
+        String broker = command.substring(5);
+        broker.trim();
+        strncpy(mqttBroker, broker.c_str(), sizeof(mqttBroker) - 1);
+        mqttBroker[sizeof(mqttBroker) - 1] = '\0';
+        mqttEnabled = false;
+        Serial.printf("[MQTT] Broker set to: %s\n", mqttBroker);
+        if (config.isGateway && wifiConnected) {
+            mqttClient.setServer(mqttBroker, mqttPort);
+            Serial.println("[MQTT] Will connect on next loop");
+        }
+    }
+    else if (command == "mqtt status") {
+        Serial.println("==== MQTT Status ====");
+        Serial.printf("Broker: %s\n", strlen(mqttBroker) > 0 ? mqttBroker : "(not set)");
+        Serial.printf("Port: %d\n", mqttPort);
+        Serial.printf("Enabled: %s\n", mqttEnabled ? "YES" : "NO");
+        Serial.printf("Connected: %s\n", mqttClient.connected() ? "YES" : "NO");
+        Serial.printf("Gateway Mode: %s\n", config.isGateway ? "YES" : "NO");
+        Serial.printf("WiFi Connected: %s\n", wifiConnected ? "YES" : "NO");
+        Serial.println("=====================");
+    }
     else if (command == "help") {
         Serial.println("Available commands:");
         Serial.println("  gateway on/off  - Toggle gateway mode");
@@ -444,6 +626,13 @@ void processSerialCommands() {
         Serial.println("  mobility simulate <state> - Simulate static/mobile/emergency");
         Serial.println("  emergency       - Trigger emergency state");
         Serial.println("  dutycycle       - Show duty cycle usage");
+        Serial.println("  sensors status  - Show sensor detection and status");
+        Serial.println("  sensors detect  - Re-run sensor detection");
+        Serial.println("  sensors read    - Force immediate sensor read");
+        Serial.println("  sensors send    - Force immediate mesh transmission");
+        Serial.println("  sensors power on/off - Manual PMS power control");
+        Serial.println("  mqtt <broker>   - Set MQTT broker hostname");
+        Serial.println("  mqtt status     - Show MQTT connection status");
         Serial.println("  help            - Show this help");
     }
     else {
@@ -574,10 +763,15 @@ void setup() {
     }
 
     // Initialize sensors
+    sensors.setPMSSetPin(PMS_SET_PIN);
+    sensors.setWarmupMs(PMS_WARMUP_MS);
+    sensors.setReadIntervalMs(SENSOR_READ_INTERVAL_MS);
+    
     if (ENABLE_PMS_SENSOR) {
         pmsSerial.begin(PMS_BAUD, SERIAL_8N1, PMS_RX_PIN, PMS_TX_PIN);
         if (sensors.beginAirQuality(&pmsSerial)) {
             ESP_LOGI(TAG, "PMS7003 sensor initialized");
+            sensors.detectPMS(PMS_DETECT_TIMEOUT_MS);
         }
     }
 
@@ -585,7 +779,14 @@ void setup() {
         gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
         if (sensors.beginGPS(&gpsSerial)) {
             ESP_LOGI(TAG, "GPS sensor initialized");
+            sensors.detectGPS(GPS_DETECT_TIMEOUT_MS);
         }
+    }
+    
+    ESP_LOGI(TAG, "Node mode: %s", getNodeModeName(sensors.getNodeMode()));
+    
+    if (sensors.isPMSDetected()) {
+        sensors.setPMSPower(false);
     }
 
     initNVS();
@@ -664,6 +865,51 @@ void loop() {
     }
     
     uint32_t now = millis();
+    
+    sensors.updatePowerState();
+    
+    if (sensors.getNodeMode() == xmesh::hal::NodeMode::SENSOR &&
+        sensors.getPMSState() == xmesh::hal::PMSState::READY &&
+        now - lastSensorTx >= SENSOR_READ_INTERVAL_MS) {
+        
+        if (!dutyCycleBudget.isExhausted()) {
+            LoraMesher& radio = LoraMesher::getInstance();
+            
+            auto aq = sensors.readAirQuality();
+            auto gps = sensors.readGPS();
+            
+            xmesh::hal::SensorPacket sp = {};
+            sp.version = xmesh::hal::SENSOR_PACKET_VERSION;
+            sp.flags = 0;
+            sp.timestamp = now;
+            
+            if (aq.valid) {
+                sp.flags |= xmesh::hal::FLAG_PMS_VALID;
+                sp.pm1_0 = aq.pm1_0;
+                sp.pm2_5 = aq.pm2_5;
+                sp.pm10 = aq.pm10;
+            }
+            
+            if (gps.valid) {
+                sp.flags |= xmesh::hal::FLAG_GPS_VALID | xmesh::hal::FLAG_GPS_FIX;
+                sp.latitude = static_cast<int32_t>(gps.latitude * 1e7);
+                sp.longitude = static_cast<int32_t>(gps.longitude * 1e7);
+                sp.altitude = static_cast<int16_t>(gps.altitude);
+                sp.satellites = gps.satellites;
+            }
+            
+            radio.createPacketAndSend(BROADCAST_ADDR, &sp, 1);
+            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(xmesh::hal::SensorPacket)));
+            
+            sensorTxCount++;
+            lastSensorTx = now;
+            
+            ESP_LOGI(TAG, "Sensor TX #%lu: PM2.5=%d, lat=%ld", sensorTxCount, sp.pm2_5, sp.latitude);
+            
+            sensors.setPMSPower(false);
+        }
+    }
+    
     if (now - lastMonitorCheck >= MONITOR_INTERVAL_MS) {
         lastMonitorCheck = now;
         
@@ -689,31 +935,20 @@ void loop() {
         
         dutyCycleBudget.tick();
         
-        if (ENABLE_PMS_SENSOR) {
-            auto aq = sensors.readAirQuality();
-            if (aq.valid) {
-                ESP_LOGI(TAG, "Air Quality: PM1.0=%d PM2.5=%d PM10=%d ug/m3",
-                         aq.pm1_0, aq.pm2_5, aq.pm10);
-            }
-        }
-
-        if (ENABLE_GPS_SENSOR) {
-            auto gps = sensors.readGPS();
-            if (gps.valid) {
-                ESP_LOGI(TAG, "GPS: %.6f, %.6f Alt=%.1fm Sats=%d",
-                         gps.latitude, gps.longitude, gps.altitude, gps.satellites);
-            }
-        }
-        
         updateDisplay();
     }
     
-    // Handle OTA updates (non-blocking)
     if (otaInitialized) {
         otaManager.process();
     }
+    
+    if (config.isGateway && wifiConnected && strlen(mqttBroker) > 0) {
+        if (!mqttClient.connected()) {
+            mqttReconnect();
+        }
+        mqttClient.loop();
+    }
 
-    // Update sensors (non-blocking)
     sensors.update();
 
     delay(1000);
