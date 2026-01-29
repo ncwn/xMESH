@@ -109,6 +109,11 @@ public:
      */
     bool isEnabled() const;
 
+    // Runtime parameter adjustment for mobility
+    void setIMin(uint32_t ms);
+    void setIMax(uint32_t ms);
+    bool isAtMaxInterval() const;
+
 private:
     /**
      * @brief Double the interval (on stable period)

@@ -30,7 +30,7 @@ void TrickleScheduler::start() {
     state = ACTIVE;
     I_current = I_min;
     reset();
-    Serial.printf("[Trickle] Started - I=%.1fs\n", I_current/1000.0);
+    ESP_LOGI(TAG, "Started - I=%.1fs", I_current/1000.0);
 }
 
 void TrickleScheduler::reset() {
@@ -44,7 +44,7 @@ void TrickleScheduler::reset() {
     nextTransmit = intervalStart + halfInterval + random(halfInterval);
     
     state = RESET;
-    Serial.printf("[Trickle] RESET - I=%.1fs, next TX in %.1fs\n", 
+    ESP_LOGI(TAG, "RESET - I=%.1fs, next TX in %.1fs", 
                  I_current/1000.0, (nextTransmit - millis())/1000.0);
 }
 
@@ -59,7 +59,7 @@ void TrickleScheduler::doubleInterval() {
     nextTransmit = intervalStart + halfInterval + random(halfInterval);
     
     state = ACTIVE;
-    Serial.printf("[Trickle] DOUBLE - I=%.1fs, next TX in %.1fs\n", 
+    ESP_LOGI(TAG, "DOUBLE - I=%.1fs, next TX in %.1fs", 
                  I_current/1000.0, (nextTransmit - millis())/1000.0);
 }
 
@@ -88,13 +88,13 @@ bool TrickleScheduler::shouldTransmit() {
         
         if (consistentHeard >= k) {
             suppressCount++;
-            Serial.printf("[Trickle] SUPPRESS - heard %d consistent HELLOs\n", 
+            ESP_LOGD(TAG, "SUPPRESS - heard %d consistent HELLOs", 
                          consistentHeard);
             return false;
         }
         
         transmitCount++;
-        Serial.printf("[Trickle] TRANSMIT - count=%u, interval=%.1fs\n", 
+        ESP_LOGI(TAG, "TRANSMIT - count=%u, interval=%.1fs", 
                      transmitCount, I_current/1000.0);
         return true;
     }
@@ -109,7 +109,7 @@ void TrickleScheduler::onHelloReceived() {
 
 void TrickleScheduler::onInconsistentHello() {
     if (!enabled) return;
-    Serial.println("[Trickle] Inconsistent HELLO - resetting");
+    ESP_LOGI(TAG, "Inconsistent HELLO - resetting");
     reset();
 }
 
@@ -127,6 +127,36 @@ uint32_t TrickleScheduler::getSuppressCount() const {
 
 bool TrickleScheduler::isEnabled() const {
     return enabled;
+}
+
+void TrickleScheduler::setIMin(uint32_t ms) {
+    if (ms >= I_max) {
+        ESP_LOGE(TAG, "setIMin failed: %lu >= I_max (%lu)", ms, I_max);
+        return;
+    }
+    ESP_LOGI(TAG, "I_min changed: %lu -> %lu ms", I_min, ms);
+    I_min = ms;
+    // Clamp current interval if needed
+    if (I_current < I_min) {
+        I_current = I_min;
+    }
+}
+
+void TrickleScheduler::setIMax(uint32_t ms) {
+    if (ms <= I_min) {
+        ESP_LOGE(TAG, "setIMax failed: %lu <= I_min (%lu)", ms, I_min);
+        return;
+    }
+    ESP_LOGI(TAG, "I_max changed: %lu -> %lu ms", I_max, ms);
+    I_max = ms;
+    // Clamp current interval if needed
+    if (I_current > I_max) {
+        I_current = I_max;
+    }
+}
+
+bool TrickleScheduler::isAtMaxInterval() const {
+    return I_current >= I_max;
 }
 
 } // namespace xmesh
