@@ -21,6 +21,11 @@ public:
     bool begin();
 
     /**
+     * @brief Destructor to clean up display implementation
+     */
+    ~Display();
+
+    /**
      * @brief Clear the display buffer
      */
     void clear();

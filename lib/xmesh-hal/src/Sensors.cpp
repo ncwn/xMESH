@@ -8,6 +8,17 @@ static const char* TAG = "Sensors";
 namespace xmesh {
 namespace hal {
 
+Sensors::~Sensors() {
+    if (pms_ != nullptr) {
+        delete pms_;
+        pms_ = nullptr;
+    }
+    if (gps_ != nullptr) {
+        delete gps_;
+        gps_ = nullptr;
+    }
+}
+
 bool Sensors::beginAirQuality(HardwareSerial* serial) {
     pms_ = new SerialPM(PMS7003, *serial);
     pms_serial_ = serial;

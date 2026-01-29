@@ -38,6 +38,7 @@ class Sensors {
 public:
     bool beginAirQuality(HardwareSerial* serial);
     bool beginGPS(HardwareSerial* serial);
+    ~Sensors();
 
     AirQualityData readAirQuality();
     GPSData readGPS();

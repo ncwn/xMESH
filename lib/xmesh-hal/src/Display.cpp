@@ -42,6 +42,8 @@ bool Display::begin() {
 
     if (!impl->begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
         Serial.println("[Display] SSD1306 init failed at 0x3C");
+        delete impl;
+        display_impl_ = nullptr;
         return false;
     }
 
@@ -52,6 +54,13 @@ bool Display::begin() {
     impl->display();
 
     return true;
+}
+
+Display::~Display() {
+    if (display_impl_ != nullptr) {
+        delete static_cast<Adafruit_SSD1306*>(display_impl_);
+        display_impl_ = nullptr;
+    }
 }
 
 void Display::clear() {
