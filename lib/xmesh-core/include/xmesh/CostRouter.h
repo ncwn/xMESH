@@ -9,13 +9,13 @@ namespace xmesh {
  * @brief Multi-metric route cost calculation combining RSSI, SNR, ETX, hop count, and gateway bias.
  * 
  * Cost formula:
- * cost = W1*(1-norm_RSSI) + W2*(1-norm_SNR) + W3*ETX + W4*hops + W5*gateway_bias
+ * cost = W1*hops + W2*(1-norm_RSSI) + W3*(1-norm_SNR) + W4*(ETX-1) + W5*gateway_bias
  * 
  * Where:
+ * - hops: Number of hops to destination
  * - norm_RSSI: Normalized RSSI [0,1], 1=best, 0=worst
  * - norm_SNR: Normalized SNR [0,1], 1=best, 0=worst
  * - ETX: Expected Transmission Count (1.0 = perfect link)
- * - hops: Number of hops to destination
  * - gateway_bias: Load balancing factor (positive = penalty, negative = bonus)
  */
 class CostRouter {
