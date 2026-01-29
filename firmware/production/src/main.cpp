@@ -50,6 +50,8 @@ static const char* NVS_NAMESPACE = "xmesh_cfg";
 
 static const char* TAG = "MAIN";
 
+static bool appMarkedValid = false;
+
 constexpr uint32_t WATCHDOG_TIMEOUT_SEC = 30;
 
 xmesh::TrickleScheduler trickle(TRICKLE_I_MIN, TRICKLE_I_MAX, TRICKLE_K, TRICKLE_ENABLED);
@@ -320,6 +322,12 @@ void loadConfig() {
     if (err == ESP_OK && mobilityVal != 0) {
         mobilityDetector.enable();
         ESP_LOGI(TAG, "Mobility detection: enabled (from NVS)");
+    }
+
+    size_t mqtt_len = sizeof(mqttBroker);
+    if (nvs_get_str(nvsHandle, "mqtt_broker", mqttBroker, &mqtt_len) == ESP_OK) {
+        nvs_get_u16(nvsHandle, "mqtt_port", &mqttPort);
+        ESP_LOGI(TAG, "Restored MQTT broker: %s:%d", mqttBroker, mqttPort);
     }
 }
 
@@ -614,6 +622,9 @@ void processSerialCommands() {
         strncpy(mqttBroker, broker.c_str(), sizeof(mqttBroker) - 1);
         mqttBroker[sizeof(mqttBroker) - 1] = '\0';
         mqttEnabled = false;
+        nvs_set_str(nvsHandle, "mqtt_broker", mqttBroker);
+        nvs_set_u16(nvsHandle, "mqtt_port", mqttPort);
+        nvs_commit(nvsHandle);
         Serial.printf("[MQTT] Broker set to: %s\n", mqttBroker);
         if (config.isGateway && wifiConnected) {
             mqttClient.setServer(mqttBroker, mqttPort);
@@ -860,9 +871,6 @@ void setup() {
     
     Serial.printf("\n[xMESH] Initialization complete. Entering main loop...\n\n");
     ESP_LOGI(TAG, "System initialized successfully");
-    
-    // Mark application as valid to prevent rollback after successful boot
-    otaManager.markAppValid();
 }
 
 void loop() {
@@ -917,7 +925,13 @@ void loop() {
                 sp.satellites = gps.satellites;
             }
             
-            radio.createPacketAndSend(BROADCAST_ADDR, &sp, 1);
+            uint16_t destAddr = BROADCAST_ADDR;
+            RouteNode* gatewayNode = radio.getClosestGateway();
+            if (gatewayNode != nullptr) {
+                destAddr = gatewayNode->networkNode.address;
+            }
+            ESP_LOGD(TAG, "Sending sensor packet to %04X", destAddr);
+            radio.createPacketAndSend(destAddr, &sp, 1);
             dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(xmesh::hal::SensorPacket)));
             
             sensorTxCount++;
@@ -950,6 +964,13 @@ void loop() {
                      etxTracker.getNumTrackedLinks(),
                      gatewayBalancer.getNeighborCount(),
                      radio.routingTableSize());
+        
+        if (!appMarkedValid && radio.routingTableSize() > 0) {
+            // Mark app valid after confirming mesh is operational
+            otaManager.markAppValid();
+            appMarkedValid = true;
+            ESP_LOGI(TAG, "App marked valid - mesh confirmed operational");
+        }
         
         if (mobilityDetector.isEnabled() && otaManager.getState() == xmesh::ota::OTAState::IDLE) {
             auto prevState = mobilityDetector.getState();
