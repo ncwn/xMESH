@@ -53,8 +53,6 @@ constexpr float ETX_ALPHA = 0.3f;              // EWMA smoothing factor (0.0-1.0
 // Distributes traffic across multiple gateways to prevent bottlenecks
 
 constexpr uint32_t MIN_GATEWAY_LOAD_WINDOW_MS = 1000;       // Minimum sampling window (1s)
-constexpr float LOAD_SWITCH_THRESHOLD = 0.25f;              // Min pkt/min delta for load-based switch
-constexpr uint8_t MAX_GATEWAY_CANDIDATES = 10;              // Max gateways to evaluate
 
 // Neighbor health monitoring thresholds
 constexpr uint32_t DETECTION_THRESHOLD_MS = 360000;         // 6 min (miss 2 safety HELLOs @ 180s)
@@ -114,16 +112,6 @@ constexpr uint16_t MQTT_PORT_DEFAULT = 1883;
 constexpr const char* MQTT_TOPIC_PREFIX = "xmesh/sensors";
 constexpr uint32_t MQTT_RECONNECT_INTERVAL_MS = 30000;
 constexpr bool ENABLE_MQTT_FORWARD = true;
-
-// ============================================================
-// Node Configuration
-// ============================================================
-
-// Set to true if this node is a gateway (has WiFi/Internet uplink)
-constexpr bool IS_GATEWAY_NODE = false;
-
-// Node address (0 = auto-assign from LoRaMesher)
-constexpr uint16_t NODE_ADDRESS = 0;
 
 // ============================================================
 // Debugging and Logging

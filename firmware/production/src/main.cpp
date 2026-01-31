@@ -18,10 +18,12 @@
 #include <xmesh/GatewayBalancer.h>
 #include <xmesh/hal/Display.h>
 #include <xmesh/MobilityDetector.h>
+#include <xmesh/security/SecurityManager.h>
 #include "DutyCycleBudget.h"
 
 // LoRaMesher routing service for callback registration
 #include "services/RoutingTableService.h"
+#include <xmesh/RoutingAdapter.h>
 
 struct XMeshConfig {
     bool isGateway;
@@ -63,7 +65,9 @@ DutyCycleBudget dutyCycleBudget;
 
 uint32_t lastMonitorCheck = 0;
 uint32_t lastSensorTx = 0;
+uint32_t lastSecurityCleanup = 0;
 constexpr uint32_t MONITOR_INTERVAL_MS = 60000;
+constexpr uint32_t SECURITY_CLEANUP_INTERVAL_MS = 3600000;  // 1 hour
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -79,6 +83,57 @@ struct TestPacket {
 
 static TestPacket testPacket;
 uint32_t packetCounter = 0;
+
+constexpr size_t SECURITY_MAX_PAYLOAD_BYTES = 128;
+
+static bool sendSecurePacket(uint16_t destAddr, const uint8_t* payload, size_t payloadLen, size_t* outLen = nullptr) {
+    if (payloadLen == 0) {
+        return false;
+    }
+
+    LoraMesher& radio = LoraMesher::getInstance();
+    auto& security = xmesh::security::SecurityManager::getInstance();
+    const uint16_t localAddr = radio.getLocalAddress();
+
+    if (security.getSecurityLevel() >= xmesh::security::SecurityLevel::ENCRYPTED) {
+        if (payloadLen > SECURITY_MAX_PAYLOAD_BYTES) {
+            ESP_LOGE(TAG, "Secure TX payload too large (%u > %u)",
+                     static_cast<unsigned>(payloadLen),
+                     static_cast<unsigned>(SECURITY_MAX_PAYLOAD_BYTES));
+            return false;
+        }
+
+        uint8_t buffer[SECURITY_MAX_PAYLOAD_BYTES];
+        memcpy(buffer, payload, payloadLen);
+        size_t encLen = payloadLen;
+        if (!security.securePayload(buffer, &encLen, sizeof(buffer), localAddr, destAddr)) {
+            ESP_LOGW(TAG, "Secure TX failed for %04X", destAddr);
+            return false;
+        }
+
+        radio.sendPacket(destAddr, buffer, encLen);
+        if (outLen != nullptr) {
+            *outLen = encLen;
+        }
+        ESP_LOGD(TAG, "Secure TX to %04X (%u -> %u bytes)", destAddr,
+                 static_cast<unsigned>(payloadLen), static_cast<unsigned>(encLen));
+        return true;
+    }
+
+    radio.sendPacket(destAddr, payload, payloadLen);
+    if (outLen != nullptr) {
+        *outLen = payloadLen;
+    }
+    return true;
+}
+
+template <typename T>
+static bool sendSecurePacket(uint16_t destAddr, const T* payload, size_t payloadCount, size_t* outLen = nullptr) {
+    return sendSecurePacket(destAddr,
+                            reinterpret_cast<const uint8_t*>(payload),
+                            payloadCount * sizeof(T),
+                            outLen);
+}
 
 const char* getNodeModeName(xmesh::hal::NodeMode mode) {
     switch (mode) {
@@ -100,10 +155,11 @@ float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
     int8_t snr = 0;
     int16_t rssi = -100;
     float etx = ETX_DEFAULT;
-    float gatewayBias = 0.0f;
+    uint8_t encodedGatewayLoad = gatewayBalancer.peekLocalGatewayLoad();
+    float gatewayBias = gatewayBalancer.getGatewayBias(via, encodedGatewayLoad);
     
-    RouteNodeCopy nodeCopy;
-    if (RoutingTableService::findNodeCopy(via, nodeCopy)) {
+    xmesh::RouteNodeCopy nodeCopy;
+    if (xmesh::RoutingAdapter::findNodeCopy(via, nodeCopy)) {
         snr = nodeCopy.receivedSNR;
         rssi = static_cast<int16_t>(snr * 4 - 110);
     }
@@ -129,8 +185,8 @@ float costCalculationCallback(uint8_t hops, uint16_t via, uint16_t destAddr) {
 
 void helloReceivedCallback(uint16_t srcAddr) {
     // Check if this is a NEW neighbor (topology change = inconsistency)
-    RouteNodeCopy nodeCopy;
-    bool wasKnown = RoutingTableService::findNodeCopy(srcAddr, nodeCopy);
+    xmesh::RouteNodeCopy nodeCopy;
+    bool wasKnown = xmesh::RoutingAdapter::findNodeCopy(srcAddr, nodeCopy);
     
     if (!wasKnown) {
         // New neighbor detected - this is an inconsistency per RFC 6206
@@ -141,7 +197,7 @@ void helloReceivedCallback(uint16_t srcAddr) {
     trickle.onHelloReceived();
     
     // Re-fetch after processing (node may now be in table)
-    if (RoutingTableService::findNodeCopy(srcAddr, nodeCopy) && nodeCopy.metric == 1) {
+    if (xmesh::RoutingAdapter::findNodeCopy(srcAddr, nodeCopy) && nodeCopy.metric == 1) {
         int8_t snr = nodeCopy.receivedSNR;
         int16_t rssi = static_cast<int16_t>(snr * 4 - 110);
         etxTracker.updateLinkMetrics(srcAddr, rssi, snr, packetCounter);
@@ -243,6 +299,19 @@ void processReceivedPackets(void*) {
         LoraMesher& radio = LoraMesher::getInstance();
         while (radio.getReceivedQueueSize() > 0) {
             AppPacket<uint8_t>* rawPacket = radio.getNextAppPacket<uint8_t>();
+            auto& security = xmesh::security::SecurityManager::getInstance();
+
+            if (security.getSecurityLevel() >= xmesh::security::SecurityLevel::ENCRYPTED) {
+                size_t decLen = rawPacket->payloadSize;
+                if (!security.verifyAndDecrypt(rawPacket->payload, &decLen, rawPacket->src, radio.getLocalAddress())) {
+                    ESP_LOGW(TAG, "Security reject from %04X (len=%u)", rawPacket->src, rawPacket->payloadSize);
+                    radio.deletePacket(rawPacket);
+                    continue;
+                }
+                rawPacket->payloadSize = static_cast<uint8_t>(decLen);
+                ESP_LOGD(TAG, "Security decrypt ok from %04X (len=%u)", rawPacket->src,
+                         static_cast<unsigned>(decLen));
+            }
             
             if (rawPacket->payloadSize == sizeof(xmesh::hal::SensorPacket)) {
                 xmesh::hal::SensorPacket* sp = reinterpret_cast<xmesh::hal::SensorPacket*>(rawPacket->payload);
@@ -253,6 +322,7 @@ void processReceivedPackets(void*) {
                     
                     if (config.isGateway && ENABLE_MQTT_FORWARD) {
                         publishSensorToMQTT(rawPacket->src, sp);
+                        gatewayBalancer.recordGatewayLoadSample();
                         Serial.printf("[MQTT] Published sensor data from %04X\n", rawPacket->src);
                     }
                 }
@@ -415,6 +485,116 @@ void processSerialCommands() {
     else if (command == "wifi off") {
         disconnectWiFi();
     }
+    else if (command == "ota status") {
+        ESP_LOGI(TAG, "OTA status requested");
+        Serial.println("==== OTA Status ====");
+        Serial.printf("State: %d\n", (int)otaManager.getState());
+        Serial.printf("Current Version: %s\n", otaManager.getCurrentVersion());
+        Serial.printf("Available: %s\n", otaManager.getAvailableVersion());
+        Serial.printf("Update Available: %s\n", otaManager.isUpdateAvailable() ? "YES" : "NO");
+        Serial.printf("Progress: %d%%\n", otaManager.getProgress());
+        Serial.printf("Last Error: %d\n", (int)otaManager.getLastError());
+        Serial.printf("Rollback Detected: %s\n", otaManager.getRollbackReason() ? "YES" : "NO");
+        Serial.println("====================");
+    }
+    else if (command == "ota check") {
+        if (!wifiConnected) {
+            ESP_LOGW(TAG, "OTA check requested without WiFi");
+            Serial.println("[OTA] WiFi not connected");
+        } else {
+            if (!otaInitialized) {
+                initOTA();
+            }
+            ESP_LOGI(TAG, "Checking for updates (configured URL)");
+            Serial.println("[OTA] Checking for updates...");
+            if (otaManager.checkForUpdates()) {
+                Serial.printf("[OTA] Update available: %s\n", otaManager.getAvailableVersion());
+            } else {
+                Serial.println("[OTA] No update available or check failed");
+            }
+        }
+    }
+    else if (command.startsWith("ota check ")) {
+        String url = command.substring(10);
+        url.trim();
+        if (url.length() == 0) {
+            Serial.println("[OTA] Usage: ota check <url>");
+        } else if (!wifiConnected) {
+            ESP_LOGW(TAG, "OTA check URL requested without WiFi");
+            Serial.println("[OTA] WiFi not connected");
+        } else {
+            if (!otaInitialized) {
+                initOTA();
+            }
+            otaManager.setVersionCheckUrl(url.c_str());
+            ESP_LOGI(TAG, "Checking for updates: %s", url.c_str());
+            Serial.println("[OTA] Checking for updates...");
+            if (otaManager.checkForUpdates(url.c_str())) {
+                Serial.printf("[OTA] Update available: %s\n", otaManager.getAvailableVersion());
+            } else {
+                Serial.println("[OTA] No update available or check failed");
+            }
+        }
+    }
+    else if (command.startsWith("ota url ")) {
+        String url = command.substring(8);
+        url.trim();
+        if (url.length() == 0) {
+            Serial.println("[OTA] Usage: ota url <url>");
+        } else {
+            otaManager.setFirmwareUrl(url.c_str());
+            ESP_LOGI(TAG, "Firmware URL set: %s", url.c_str());
+            Serial.printf("[OTA] Firmware URL set: %s\n", url.c_str());
+        }
+    }
+    else if (command == "ota update") {
+        if (!wifiConnected) {
+            ESP_LOGW(TAG, "OTA update requested without WiFi");
+            Serial.println("[OTA] WiFi not connected");
+        } else if (otaManager.getState() != xmesh::ota::OTAState::IDLE) {
+            Serial.println("[OTA] Update already in progress");
+        } else {
+            if (!otaInitialized) {
+                initOTA();
+            }
+            ESP_LOGI(TAG, "Starting HTTP OTA update (configured URL)");
+            Serial.println("[OTA] Starting HTTP update...");
+            if (!otaManager.startHttpUpdate(nullptr)) {
+                Serial.println("[OTA] Update failed to start");
+            }
+        }
+    }
+    else if (command.startsWith("ota update ")) {
+        String url = command.substring(11);
+        url.trim();
+        if (url.length() == 0) {
+            Serial.println("[OTA] Usage: ota update <url>");
+        } else if (!wifiConnected) {
+            ESP_LOGW(TAG, "OTA update URL requested without WiFi");
+            Serial.println("[OTA] WiFi not connected");
+        } else if (otaManager.getState() != xmesh::ota::OTAState::IDLE) {
+            Serial.println("[OTA] Update already in progress");
+        } else {
+            if (!otaInitialized) {
+                initOTA();
+            }
+            otaManager.setFirmwareUrl(url.c_str());
+            ESP_LOGI(TAG, "Starting HTTP OTA update: %s", url.c_str());
+            Serial.println("[OTA] Starting HTTP update...");
+            if (!otaManager.startHttpUpdate(url.c_str())) {
+                Serial.println("[OTA] Update failed to start");
+            }
+        }
+    }
+    else if (command == "ota abort") {
+        if (otaManager.getState() == xmesh::ota::OTAState::IDLE) {
+            Serial.println("[OTA] No update in progress");
+        } else {
+            ESP_LOGI(TAG, "Aborting OTA update");
+            otaManager.abort();
+            Serial.println("[OTA] Update aborted");
+        }
+    }
     else if (command == "wifi scan") {
         Serial.println("[WiFi] Scanning...");
         WiFi.mode(WIFI_STA);
@@ -446,10 +626,21 @@ void processSerialCommands() {
         Serial.printf("Node Address: %04X\n", radio.getLocalAddress());
         Serial.printf("Gateway Mode: %s\n", config.isGateway ? "YES" : "NO");
         Serial.printf("WiFi: %s\n", wifiConnected ? WiFi.localIP().toString().c_str() : "OFF");
+        auto& security = xmesh::security::SecurityManager::getInstance();
+        Serial.printf("Security: Level=%d, Mode=%d, Devices=%d\n", 
+                     (int)security.getSecurityLevel(), (int)security.getAuthMode(), 
+                     security.getAuthorizedDeviceCount());
         Serial.printf("Neighbors: %d\n", gatewayBalancer.getNeighborCount());
         Serial.printf("Routing Table: %d entries\n", radio.routingTableSize());
         Serial.printf("Trickle TX: %lu, Suppressed: %lu\n", 
                      trickle.getTransmitCount(), trickle.getSuppressCount());
+        uint8_t gatewayLoad = gatewayBalancer.peekLocalGatewayLoad();
+        if (gatewayLoad == 255) {
+            Serial.printf("Gateway Load: unknown\n");
+        } else {
+            Serial.printf("Gateway Load: %.1f ppm (encoded=%u)\n",
+                          xmesh::GatewayBalancer::decodeGatewayLoad(gatewayLoad), gatewayLoad);
+        }
         if (mobilityDetector.isEnabled()) {
             Serial.printf("Mobility: %s (variance: %.2f dB²)\n", 
                          mobilityDetector.getStateName(), mobilityDetector.getAggregateVariance());
@@ -470,9 +661,13 @@ void processSerialCommands() {
         } else {
             LoraMesher& radio = LoraMesher::getInstance();
             testPacket.counter = packetCounter++;
-            radio.createPacketAndSend(destAddr, &testPacket, 1);
-            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
-            Serial.printf("[CMD] Sent packet #%lu to %04X\n", testPacket.counter, destAddr);
+            size_t sentLen = 0;
+            if (sendSecurePacket(destAddr, &testPacket, 1, &sentLen)) {
+                dutyCycleBudget.recordAirtime(estimateAirtimeMs(sentLen));
+                Serial.printf("[CMD] Sent packet #%lu to %04X\n", testPacket.counter, destAddr);
+            } else {
+                Serial.println("[CMD] Send failed (security)");
+            }
         }
     }
     else if (command == "routes") {
@@ -534,6 +729,59 @@ void processSerialCommands() {
         Serial.printf("Exhausted: %s\n", dutyCycleBudget.isExhausted() ? "YES" : "NO");
         Serial.println("====================");
     }
+    // Security commands
+    else if (command.startsWith("security ")) {
+        auto& security = xmesh::security::SecurityManager::getInstance();
+        String sub = command.substring(9);
+        if (sub == "status") {
+            Serial.println("==== Security Status ====");
+            Serial.printf("Level: %d\n", (int)security.getSecurityLevel());
+            Serial.printf("Frame Counter: %lu\n", security.getFrameCounterOut());
+            Serial.printf("Auth Mode: %d\n", (int)security.getAuthMode());
+            Serial.printf("Devices: %d\n", security.getAuthorizedDeviceCount());
+            Serial.printf("Replay Rejects: %lu\n", security.getReplayRejectCount());
+            Serial.println("=========================");
+        }
+        else if (sub.startsWith("level ")) {
+            int level = sub.substring(6).toInt();
+            security.setSecurityLevel(static_cast<xmesh::security::SecurityLevel>(level));
+            security.persist();
+            Serial.printf("[CMD] Security level set to: %d (persisted)\n", level);
+        }
+        else if (sub.startsWith("key ")) {
+            String password = sub.substring(4);
+            security.setEncryptionKeyFromPassword(password.c_str());
+            security.persist();
+            Serial.println("[CMD] Security key derived from password (persisted)");
+        }
+        else if (sub == "devices") {
+            Serial.printf("[CMD] Authorized devices: %d\n", security.getAuthorizedDeviceCount());
+        }
+        else if (sub.startsWith("add ")) {
+            uint16_t addr = strtoul(sub.substring(4).c_str(), NULL, 16);
+            if (security.addAuthorizedDevice(addr)) {
+                security.persist();
+                Serial.printf("[CMD] Device %04X added (persisted)\n", addr);
+            } else {
+                Serial.println("[CMD] Failed to add device");
+            }
+        }
+        else if (sub.startsWith("remove ")) {
+            uint16_t addr = strtoul(sub.substring(7).c_str(), NULL, 16);
+            if (security.removeAuthorizedDevice(addr)) {
+                security.persist();
+                Serial.printf("[CMD] Device %04X removed (persisted)\n", addr);
+            } else {
+                Serial.println("[CMD] Failed to remove device");
+            }
+        }
+        else if (sub.startsWith("mode ")) {
+            int mode = sub.substring(5).toInt();
+            security.setAuthMode(static_cast<xmesh::security::AuthMode>(mode));
+            security.persist();
+            Serial.printf("[CMD] Auth mode set to: %d (persisted)\n", mode);
+        }
+    }
     // Sensor commands
     else if (command == "sensors status") {
         Serial.println("==== Sensor Status ====");
@@ -593,10 +841,14 @@ void processSerialCommands() {
             sp.altitude = gps.altitude;
             sp.satellites = gps.satellites;
             sp.timestamp = millis() / 1000;
-            radio.createPacketAndSend(BROADCAST_ADDR, reinterpret_cast<uint8_t*>(&sp), sizeof(sp));
-            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(sp)));
-            sensorTxCount++;
-            Serial.printf("[SENSORS] Force TX #%lu: PM2.5=%d\n", sensorTxCount, sp.pm2_5);
+            size_t sentLen = 0;
+            if (sendSecurePacket(BROADCAST_ADDR, reinterpret_cast<const uint8_t*>(&sp), sizeof(sp), &sentLen)) {
+                dutyCycleBudget.recordAirtime(estimateAirtimeMs(sentLen));
+                sensorTxCount++;
+                Serial.printf("[SENSORS] Force TX #%lu: PM2.5=%d\n", sensorTxCount, sp.pm2_5);
+            } else {
+                Serial.println("[SENSORS] Send failed (security)");
+            }
         }
     }
     else if (command == "sensors power on") {
@@ -647,6 +899,13 @@ void processSerialCommands() {
         Serial.println("  wifi SSID PASS  - Set WiFi credentials");
         Serial.println("  wifi on/off     - Enable/disable WiFi for OTA");
         Serial.println("  wifi scan       - Scan for WiFi networks");
+        Serial.println("  ota status      - Show OTA state and version info");
+        Serial.println("  ota check       - Check for updates (configured URL)");
+        Serial.println("  ota check <url> - Check for updates from URL");
+        Serial.println("  ota url <url>   - Set firmware URL for HTTP OTA");
+        Serial.println("  ota update      - Start HTTP update (configured URL)");
+        Serial.println("  ota update <url> - Start HTTP update from URL");
+        Serial.println("  ota abort       - Abort OTA update in progress");
         Serial.println("  status          - Show node status");
         Serial.println("  routes          - Show routing table");
         Serial.println("  neighbors       - Show neighbor info");
@@ -663,6 +922,13 @@ void processSerialCommands() {
         Serial.println("  sensors power on/off - Manual PMS power control");
         Serial.println("  mqtt <broker>   - Set MQTT broker hostname");
         Serial.println("  mqtt status     - Show MQTT connection status");
+        Serial.println("  security status - Show security info");
+        Serial.println("  security level N - Set security level (0-3)");
+        Serial.println("  security key P - Set key from password");
+        Serial.println("  security devices - Show authorized device count");
+        Serial.println("  security add X - Add device address (hex)");
+        Serial.println("  security remove X - Remove device address (hex)");
+        Serial.println("  security mode N - Set auth mode (0-2)");
         Serial.println("  help            - Show this help");
     }
     else {
@@ -822,6 +1088,11 @@ void setup() {
     initNVS();
     loadConfig();
 
+    // Initialize security (default: NONE for backward compatibility)
+    auto& security = xmesh::security::SecurityManager::getInstance();
+    security.begin(xmesh::security::SecurityLevel::NONE);
+    ESP_LOGI(TAG, "Security initialized (level: NONE)");
+
     ESP_LOGI(TAG, "Initializing watchdog (timeout: %lu seconds)", WATCHDOG_TIMEOUT_SEC);
     esp_task_wdt_init(WATCHDOG_TIMEOUT_SEC, true);
     esp_task_wdt_add(NULL);
@@ -849,6 +1120,12 @@ void setup() {
     config.loraIrq = 14;    // DIO1 (interrupt)
     config.loraIo1 = 13;    // BUSY_LoRa (gpio for SX1262)
     config.module = LoraMesher::LoraModules::SX1262_MOD;
+    
+    config.freq = LORA_FREQUENCY / 1000000.0f;  // Hz to MHz conversion required by LoraMesher
+    config.bw = LORA_BANDWIDTH;
+    config.sf = LORA_SPREADING_FACTOR;
+    config.cr = LORA_CODING_RATE;
+    config.power = LORA_TX_POWER;
     
     radio.begin(config);
     
@@ -882,13 +1159,18 @@ void loop() {
                      trickle.getCurrentIntervalSec(),
                      trickle.getTransmitCount(),
                      trickle.getSuppressCount());
+
+        gatewayBalancer.sampleLocalGatewayLoadForHello();
         
         LoraMesher& radio = LoraMesher::getInstance();
         
         testPacket.counter = packetCounter++;
-        radio.createPacketAndSend(BROADCAST_ADDR, &testPacket, 1);
-        
-        dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(TestPacket)));
+        size_t sentLen = 0;
+        if (sendSecurePacket(BROADCAST_ADDR, &testPacket, 1, &sentLen)) {
+            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sentLen));
+        } else {
+            ESP_LOGW(TAG, "Trickle TX failed (security)");
+        }
     }
     
     uint32_t now = millis();
@@ -931,8 +1213,12 @@ void loop() {
                 destAddr = gatewayNode->networkNode.address;
             }
             ESP_LOGD(TAG, "Sending sensor packet to %04X", destAddr);
-            radio.createPacketAndSend(destAddr, &sp, 1);
-            dutyCycleBudget.recordAirtime(estimateAirtimeMs(sizeof(xmesh::hal::SensorPacket)));
+            size_t sentLen = 0;
+            if (sendSecurePacket(destAddr, &sp, 1, &sentLen)) {
+                dutyCycleBudget.recordAirtime(estimateAirtimeMs(sentLen));
+            } else {
+                ESP_LOGW(TAG, "Sensor TX failed (security)");
+            }
             
             sensorTxCount++;
             lastSensorTx = now;
@@ -964,6 +1250,16 @@ void loop() {
                      etxTracker.getNumTrackedLinks(),
                      gatewayBalancer.getNeighborCount(),
                      radio.routingTableSize());
+
+        if (config.isGateway) {
+            uint8_t gatewayLoad = gatewayBalancer.peekLocalGatewayLoad();
+            if (gatewayLoad == 255) {
+                Serial.printf("[GatewayBalancer] Local gateway load: unknown\n");
+            } else {
+                Serial.printf("[GatewayBalancer] Local gateway load: %.1f ppm (encoded=%u)\n",
+                              xmesh::GatewayBalancer::decodeGatewayLoad(gatewayLoad), gatewayLoad);
+            }
+        }
         
         if (!appMarkedValid && radio.routingTableSize() > 0) {
             // Mark app valid after confirming mesh is operational
@@ -984,6 +1280,16 @@ void loop() {
         dutyCycleBudget.tick();
         
         updateDisplay();
+    }
+    
+    if (now - lastSecurityCleanup >= SECURITY_CLEANUP_INTERVAL_MS) {
+        lastSecurityCleanup = now;
+        auto& security = xmesh::security::SecurityManager::getInstance();
+        uint8_t cleanedPeers = security.getFrameCounter().cleanupStalePeers();
+        security.getKeyManager().cleanupOldKeys();
+        if (cleanedPeers > 0) {
+            ESP_LOGI(TAG, "Security cleanup: removed %d stale peers", cleanedPeers);
+        }
     }
     
     if (otaInitialized) {

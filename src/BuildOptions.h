@@ -106,9 +106,6 @@ extern const char* LM_VERSION;
 #define ROLE_GATEWAY 0b00000001
 //Free Role Types from 0b00000010 to 0b10000000
 
-// Define if is testing
-// #define LM_TESTING
-
 // God mode: Enables internal LoRaMesher features for xMESH extensions
 #ifdef LM_GOD_MODE
 #define GOD_MODE_ENABLED 1

@@ -314,6 +314,13 @@ public:
     }
 
     /**
+     * @brief Delete a route from the routing table
+     * 
+     * @param address Address of the route to delete
+     */
+    void deleteRoute(uint16_t address);
+
+    /**
      * @brief Returns the number of packets inside the received packets queue
      *
      * @return size_t Received Queue Size
@@ -1087,36 +1094,6 @@ private:
      *
      */
     void removeNodeFromQSPandQWP(uint16_t address);
-
-#ifdef LM_TESTING
-    /**
-     * @brief Returns if the packet can be received. Only for testing
-     *
-     * @param source The source of the packet
-     * @return true The packet can be received
-     * @return false The packet will be dropped
-     */
-    bool canReceivePacket(uint16_t source);
-
-    /**
-     * @brief Returns if is a data packet and the via is the local address. Only for testing
-     *
-     * @param packet Packet to be checked
-     * @param localAddress Local address
-     * @return true Is a data packet and the via is the local address
-     */
-    bool isDataPacketAndLocal(DataPacket* packet, uint16_t localAddress);
-
-    /**
-     * @brief Returns if the packet should be processed. Only for testing
-     *
-     * @param packet Packet to be checked
-     * @return true
-     * @return false
-     */
-    bool shouldProcessPacket(Packet<uint8_t>* packet);
-
-#endif
 
 
 public:

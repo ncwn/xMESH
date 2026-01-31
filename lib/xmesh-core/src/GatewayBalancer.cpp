@@ -234,14 +234,6 @@ void GatewayBalancer::setDetectionThreshold(uint32_t ms) {
     detectionThresholdMs_ = ms;
 }
 
-uint32_t GatewayBalancer::getWarningThreshold() const {
-    return warningThresholdMs_;
-}
-
-uint32_t GatewayBalancer::getDetectionThreshold() const {
-    return detectionThresholdMs_;
-}
-
 bool GatewayBalancer::isNeighborFailed(uint16_t addr) const {
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
         ESP_LOGW(TAG, "Failed to acquire mutex in isNeighborFailed");
@@ -270,6 +262,7 @@ uint16_t GatewayBalancer::getNeighborAddress(uint8_t index) const {
     return addr;
 }
 
+#if defined(UNIT_TEST) || defined(NATIVE_BUILD)
 bool GatewayBalancer::getNeighborStats(uint16_t addr, uint8_t& missedHellos, uint32_t& silenceDuration) const {
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
         ESP_LOGW(TAG, "Failed to acquire mutex in getNeighborStats");
@@ -285,6 +278,7 @@ bool GatewayBalancer::getNeighborStats(uint16_t addr, uint8_t& missedHellos, uin
     xSemaphoreGive(mutex_);
     return false;
 }
+#endif
 
 int8_t GatewayBalancer::findNeighborIndex(uint16_t addr) const {
     for (uint8_t i = 0; i < numNeighbors; i++) {

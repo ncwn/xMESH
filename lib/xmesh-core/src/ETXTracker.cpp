@@ -146,15 +146,6 @@ void ETXTracker::updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, u
     xSemaphoreGive(mutex_);
 }
 
-void ETXTracker::updateETX(uint16_t address, bool success) {
-    if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) {
-        ESP_LOGW(TAG, "Failed to acquire mutex in updateETX");
-        return;
-    }
-    updateETXInternal(address, success);
-    xSemaphoreGive(mutex_);
-}
-
 void ETXTracker::updateETXInternal(uint16_t address, bool success) {
     LinkMetrics* link = getLinkMetricsInternal(address);
     

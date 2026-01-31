@@ -15,17 +15,6 @@
 
 #include "services/RoleService.h"
 
-struct RouteNodeCopy {
-    uint16_t address;
-    uint16_t via;
-    uint8_t metric;
-    int8_t receivedSNR;
-    int8_t sentSNR;
-    uint8_t role;
-    bool valid;
-
-    RouteNodeCopy() : address(0), via(0), metric(0), receivedSNR(0), sentSNR(0), role(0), valid(false) {}
-};
 
 /**
  * @brief Routing Table Service
@@ -97,8 +86,6 @@ public:
 	 */
 	static RouteNode* findNode(uint16_t address);
 
-	static bool findNodeCopy(uint16_t address, RouteNodeCopy& out);
-
 	/**
 	 * @brief Get the best node that contains a role, the nearest
 	 *
@@ -115,6 +102,13 @@ public:
 	 * @return false If the address is not inside the routing table
 	 */
 	static bool hasAddressRoutingTable(uint16_t address);
+
+	/**
+	 * @brief Remove a specific route from the routing table
+	 * 
+	 * @param address Address of the route to remove
+	 */
+	static void removeRoute(uint16_t address);
 
 	/**
 	 * @brief Get the Next Hop address

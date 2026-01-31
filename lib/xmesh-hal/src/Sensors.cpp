@@ -153,10 +153,6 @@ void Sensors::setPMSPower(bool on) {
     }
 }
 
-bool Sensors::getPMSPower() const {
-    return pms_power_on_;
-}
-
 PMSState Sensors::getPMSState() const {
     return pms_state_;
 }

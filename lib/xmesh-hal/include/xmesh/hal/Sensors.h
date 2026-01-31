@@ -49,7 +49,6 @@ public:
     bool detectGPS(uint32_t timeoutMs = 2000);
 
     void setPMSPower(bool on);
-    bool getPMSPower() const;
     PMSState getPMSState() const;
 
     bool isPMSDetected() const;

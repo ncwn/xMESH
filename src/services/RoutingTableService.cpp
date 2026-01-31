@@ -23,33 +23,6 @@ RouteNode* RoutingTableService::findNode(uint16_t address) {
     return nullptr;
 }
 
-bool RoutingTableService::findNodeCopy(uint16_t address, RouteNodeCopy& out) {
-    routingTableList->setInUse();
-
-    if (routingTableList->moveToStart()) {
-        do {
-            RouteNode* node = routingTableList->getCurrent();
-
-            if (node->networkNode.address == address) {
-                out.address = node->networkNode.address;
-                out.via = node->via;
-                out.metric = node->networkNode.metric;
-                out.receivedSNR = node->receivedSNR;
-                out.sentSNR = node->sentSNR;
-                out.role = node->networkNode.role;
-                out.valid = true;
-                routingTableList->releaseInUse();
-                return true;
-            }
-
-        } while (routingTableList->next());
-    }
-
-    routingTableList->releaseInUse();
-    out.valid = false;
-    return false;
-}
-
 RouteNode* RoutingTableService::getBestNodeByRole(uint8_t role) {
     RouteNode* bestNode = nullptr;
 
@@ -74,6 +47,27 @@ RouteNode* RoutingTableService::getBestNodeByRole(uint8_t role) {
 bool RoutingTableService::hasAddressRoutingTable(uint16_t address) {
     RouteNode* node = findNode(address);
     return node != nullptr;
+}
+
+void RoutingTableService::removeRoute(uint16_t address) {
+    routingTableList->setInUse();
+
+    if (routingTableList->moveToStart()) {
+        do {
+            RouteNode* node = routingTableList->getCurrent();
+
+            if (node->networkNode.address == address) {
+                ESP_LOGW(LM_TAG, "Removing route %X via %X", node->networkNode.address, node->via);
+
+                delete node;
+                routingTableList->DeleteCurrent();
+                break;
+            }
+
+        } while (routingTableList->next());
+    }
+
+    routingTableList->releaseInUse();
 }
 
 uint16_t RoutingTableService::getNextHop(uint16_t dst) {

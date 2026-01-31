@@ -151,12 +151,14 @@ void MobilityDetector::triggerEmergency() {
     xSemaphoreGive(mutex_);
 }
 
+#if defined(UNIT_TEST) || defined(NATIVE_BUILD)
 void MobilityDetector::simulateState(MobilityState state) {
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return;
     state_ = state;
     lastTransitionTime_ = millis();
     xSemaphoreGive(mutex_);
 }
+#endif
 
 float MobilityDetector::getAggregateVariance() const {
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) return 0.0f;

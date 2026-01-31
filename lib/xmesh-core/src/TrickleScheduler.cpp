@@ -1,4 +1,5 @@
 #include "xmesh/TrickleScheduler.h"
+#include <algorithm>
 #include <Arduino.h>
 #include <esp_log.h>
 
@@ -66,7 +67,7 @@ void TrickleScheduler::doubleInterval() {
     if (!enabled) return;
     
     if (!mutex_ || xSemaphoreTake(mutex_, portMAX_DELAY) != pdTRUE) { return; }
-    I_current = min(I_current * 2, I_max);
+    I_current = std::min(I_current * 2, I_max);
     consistentHeard = 0;
     xSemaphoreGive(mutex_);
 

@@ -667,14 +667,6 @@ void LoraMesher::processPackets() {
             if (rx) {
                 uint8_t type = rx->packet->type;
 
-#ifdef LM_TESTING
-                if (!shouldProcessPacket(rx->packet)) {
-                    PacketQueueService::deleteQueuePacketAndPacket(rx);
-                    ESP_LOGV(LM_TAG, "TESTING: Packet not for me, deleting it");
-                    continue;
-                }
-#endif
-
                 printHeaderPacket(rx->packet, "received");
 
 
@@ -882,7 +874,13 @@ void LoraMesher::sendReliablePacket(uint16_t dst, uint8_t* payload, uint32_t pay
     notifyNewSequenceStarted();
 }
 
+void LoraMesher::deleteRoute(uint16_t address) {
+    RoutingTableService::removeRoute(address);
+    removeNodeFromQSPandQWP(address);
+}
+
 void LoraMesher::processDataPacket(QueuePacket<DataPacket>* pq) {
+
     DataPacket* packet = pq->packet;
 
     incReceivedDataPackets();
@@ -1014,22 +1012,6 @@ void LoraMesher::recordState(LM_StateType type, Packet<uint8_t>* packet) {
         getReceivedQueueSize(), routingTableSize(), q_WRP->getLength(), q_WSP->getLength(),
         type, packet);
 }
-
-#ifdef LM_TESTING
-bool LoraMesher::canReceivePacket(uint16_t source) {
-	return true;
-}
-#endif
-
-#ifdef LM_TESTING
-bool LoraMesher::isDataPacketAndLocal(DataPacket* packet, uint16_t localAddress) {
-    return PacketService::isDataPacket(packet->type) && packet->via == localAddress;
-}
-
-bool LoraMesher::shouldProcessPacket(Packet<uint8_t>* packet) {
-    return isDataPacketAndLocal(reinterpret_cast<DataPacket*>(packet), getLocalAddress()) || canReceivePacket(packet->src);
-}
-#endif
 
 /**
  *  End Region Packet Service

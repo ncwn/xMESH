@@ -1,26 +1,16 @@
-/**
- * @file OTAManager.cpp
- * @brief OTA update manager implementation using ESP-IDF native OTA
- * 
- * Implements WiFi-based OTA updates using ArduinoOTA library with:
- * - Dual partition scheme (ota_0, ota_1)
- * - Automatic rollback on boot failure (NVS-tracked)
- * - ESP-IDF native partition management
- */
-
 #include "ota/OTAManager.h"
 #include <ArduinoOTA.h>
 #include <nvs_flash.h>
 #include <nvs.h>
 #include <esp_app_format.h>
 #include <esp_log.h>
+#include <esp_https_ota.h>
+#include <cstring>
 
 namespace xmesh {
 namespace ota {
 
 static const char* TAG = "OTA";
-
-// NVS namespace and key for boot failure tracking
 static const char* NVS_NAMESPACE = "xmesh_ota";
 static const char* NVS_FAIL_COUNT_KEY = "ota_fail_count";
 static const uint8_t MAX_BOOT_FAILURES = 3;
@@ -174,17 +164,203 @@ bool OTAManager::begin() {
 }
 
 bool OTAManager::checkForUpdates() {
-    // TODO: Implement HTTP-based update check against version server
-    // Currently using ArduinoOTA push model instead
-    return false;
-}
-
-bool OTAManager::startUpdate(const char* url) {
-    // TODO: Implement HTTP pull-based OTA using esp_http_client
-    if (url != nullptr) {
-        ESP_LOGW(TAG, "HTTP OTA not implemented - use ArduinoOTA");
+    if (strlen(versionCheckUrl_) == 0) {
         return false;
     }
+    return checkForUpdates(versionCheckUrl_);
+}
+
+bool OTAManager::checkForUpdates(const char* versionUrl) {
+    if (versionUrl == nullptr) return false;
+    
+    setState(OTAState::CHECKING);
+    
+    esp_http_client_config_t config = {};
+    config.url = versionUrl;
+    config.timeout_ms = 10000;
+    
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (client == nullptr) {
+        setError(OTAError::HTTP_ERROR);
+        setState(OTAState::IDLE);
+        return false;
+    }
+    
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "HTTP open failed: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        setError(OTAError::HTTP_ERROR);
+        setState(OTAState::IDLE);
+        return false;
+    }
+    
+    int content_length = esp_http_client_fetch_headers(client);
+    if (content_length <= 0 || content_length > 31) {
+        esp_http_client_close(client);
+        esp_http_client_cleanup(client);
+        setState(OTAState::IDLE);
+        return false;
+    }
+    
+    char version_buf[32] = {0};
+    int read_len = esp_http_client_read(client, version_buf, content_length);
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    
+    if (read_len <= 0) {
+        setState(OTAState::IDLE);
+        return false;
+    }
+    
+    version_buf[read_len] = '\0';
+    for (int i = 0; i < read_len; i++) {
+        if (version_buf[i] == '\n' || version_buf[i] == '\r') {
+            version_buf[i] = '\0';
+            break;
+        }
+    }
+    
+    strncpy(availableVersion_, version_buf, sizeof(availableVersion_) - 1);
+    
+    const esp_app_desc_t* app_desc = esp_ota_get_app_description();
+    updateAvailable_ = (strcmp(availableVersion_, app_desc->version) != 0);
+    
+    ESP_LOGI(TAG, "Current: %s, Available: %s, Update: %s", 
+             app_desc->version, availableVersion_, 
+             updateAvailable_ ? "YES" : "NO");
+    
+    setState(OTAState::IDLE);
+    return updateAvailable_;
+}
+
+bool OTAManager::startHttpUpdate(const char* firmwareUrl, const char* caCert) {
+    if (firmwareUrl == nullptr) {
+        if (strlen(firmwareUrl_) == 0) {
+            ESP_LOGE(TAG, "No firmware URL configured");
+            return false;
+        }
+        firmwareUrl = firmwareUrl_;
+    }
+    
+    return performHttpOta(firmwareUrl, caCert);
+}
+
+bool OTAManager::validateImageHeader(const esp_app_desc_t* newAppInfo) {
+    if (newAppInfo == nullptr) return false;
+    
+    const esp_app_desc_t* running = esp_ota_get_app_description();
+    
+    ESP_LOGI(TAG, "Running version: %s", running->version);
+    ESP_LOGI(TAG, "New version: %s", newAppInfo->version);
+    
+    if (memcmp(newAppInfo->version, running->version, sizeof(newAppInfo->version)) == 0) {
+        ESP_LOGW(TAG, "Same version - skipping update");
+        setError(OTAError::VERSION_REJECTED);
+        return false;
+    }
+    
+    return true;
+}
+
+bool OTAManager::performHttpOta(const char* url, const char* caCert) {
+    ESP_LOGI(TAG, "Starting HTTP OTA from: %s", url);
+    setState(OTAState::DOWNLOADING);
+    progress_ = 0;
+    
+    esp_http_client_config_t http_config = {};
+    http_config.url = url;
+    http_config.timeout_ms = 30000;
+    http_config.keep_alive_enable = true;
+    if (caCert != nullptr) {
+        http_config.cert_pem = caCert;
+    }
+    
+    esp_https_ota_config_t ota_config = {};
+    ota_config.http_config = &http_config;
+    
+    esp_https_ota_handle_t https_ota_handle = nullptr;
+    
+    esp_err_t err = esp_https_ota_begin(&ota_config, &https_ota_handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_https_ota_begin failed: %s", esp_err_to_name(err));
+        setError(OTAError::HTTP_ERROR);
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    esp_app_desc_t new_app_info;
+    err = esp_https_ota_get_img_desc(https_ota_handle, &new_app_info);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_https_ota_get_img_desc failed");
+        esp_https_ota_abort(https_ota_handle);
+        setError(OTAError::DOWNLOAD_FAILED);
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    if (!validateImageHeader(&new_app_info)) {
+        esp_https_ota_abort(https_ota_handle);
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    int last_progress = -1;
+    while (true) {
+        err = esp_https_ota_perform(https_ota_handle);
+        if (err != ESP_ERR_HTTPS_OTA_IN_PROGRESS) {
+            break;
+        }
+        
+        int image_read = esp_https_ota_get_image_len_read(https_ota_handle);
+        int image_size = esp_https_ota_get_image_size(https_ota_handle);
+        if (image_size > 0) {
+            int current_progress = (image_read * 100) / image_size;
+            if (current_progress != last_progress) {
+                progress_ = current_progress;
+                last_progress = current_progress;
+                ESP_LOGI(TAG, "Progress: %d%%", current_progress);
+            }
+        }
+    }
+    
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "esp_https_ota_perform failed: %s", esp_err_to_name(err));
+        esp_https_ota_abort(https_ota_handle);
+        setError(OTAError::DOWNLOAD_FAILED);
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    if (!esp_https_ota_is_complete_data_received(https_ota_handle)) {
+        ESP_LOGE(TAG, "Complete data not received");
+        esp_https_ota_abort(https_ota_handle);
+        setError(OTAError::DOWNLOAD_FAILED);
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    setState(OTAState::VERIFYING);
+    
+    err = esp_https_ota_finish(https_ota_handle);
+    if (err != ESP_OK) {
+        if (err == ESP_ERR_OTA_VALIDATE_FAILED) {
+            ESP_LOGE(TAG, "Image signature verification FAILED");
+            setError(OTAError::SIGNATURE_FAILED);
+        } else {
+            ESP_LOGE(TAG, "esp_https_ota_finish failed: %s", esp_err_to_name(err));
+            setError(OTAError::VERIFY_FAILED);
+        }
+        setState(OTAState::FAILED);
+        return false;
+    }
+    
+    ESP_LOGI(TAG, "OTA successful! Restarting...");
+    setState(OTAState::APPLYING);
+    progress_ = 100;
+    
+    delay(1000);
+    esp_restart();
     
     return true;
 }
@@ -250,20 +426,23 @@ void OTAManager::abort() {
     progress_ = 0;
 }
 
-bool OTAManager::verifyPartition() {
-    // TODO: Integrate into startUpdate() when HTTP pull-based OTA is implemented
-    // Currently unused as ArduinoOTA handles its own verification
-    if (update_partition_ == nullptr) {
-        setError(OTAError::NO_PARTITION);
-        return false;
+void OTAManager::setVersionCheckUrl(const char* url) {
+    if (url != nullptr) {
+        strncpy(versionCheckUrl_, url, sizeof(versionCheckUrl_) - 1);
+        versionCheckUrl_[sizeof(versionCheckUrl_) - 1] = '\0';
     }
-    
-    if (update_partition_->type != ESP_PARTITION_TYPE_APP) {
-        setError(OTAError::NO_PARTITION);
-        return false;
+}
+
+void OTAManager::setFirmwareUrl(const char* url) {
+    if (url != nullptr) {
+        strncpy(firmwareUrl_, url, sizeof(firmwareUrl_) - 1);
+        firmwareUrl_[sizeof(firmwareUrl_) - 1] = '\0';
     }
-    
-    return true;
+}
+
+const char* OTAManager::getCurrentVersion() const {
+    const esp_app_desc_t* app_desc = esp_ota_get_app_description();
+    return app_desc->version;
 }
 
 void OTAManager::setState(OTAState new_state) {
@@ -274,5 +453,5 @@ void OTAManager::setError(OTAError error) {
     last_error_ = error;
 }
 
-} // namespace ota
-} // namespace xmesh
+}
+}

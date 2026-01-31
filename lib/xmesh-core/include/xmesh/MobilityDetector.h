@@ -24,7 +24,10 @@ public:
     const char* getStateName() const;
     
     void triggerEmergency();
+    
+#if defined(UNIT_TEST) || defined(NATIVE_BUILD)
     void simulateState(MobilityState state);
+#endif
     
     float getAggregateVariance() const;
 

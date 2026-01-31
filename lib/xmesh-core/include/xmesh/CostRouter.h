@@ -63,12 +63,14 @@ public:
      */
     static float normalizeSNR(int8_t snr);
 
-    // Getters for weights
+#if defined(UNIT_TEST) || defined(NATIVE_BUILD)
+    // Getters for weights (test-only)
     float getW1() const { return w1_hopCount; }
     float getW2() const { return w2_rssi; }
     float getW3() const { return w3_snr; }
     float getW4() const { return w4_etx; }
     float getW5() const { return w5_gatewayBias; }
+#endif
 
 private:
     // Cost function weights (from config.h)

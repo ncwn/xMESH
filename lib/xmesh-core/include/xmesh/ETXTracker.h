@@ -76,13 +76,6 @@ public:
     void updateLinkMetrics(uint16_t address, int16_t rssi, int8_t snr, uint32_t seqNum);
 
     /**
-     * @brief Update ETX for a link after transmission attempt.
-     * @param address Neighbor address
-     * @param success True if transmission succeeded, False if packet loss detected
-     */
-    void updateETX(uint16_t address, bool success);
-
-    /**
      * @brief Get link metrics for a specific neighbor.
      * @param address Neighbor address
      * @return Pointer to LinkMetrics, or nullptr if not found

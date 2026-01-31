@@ -3,21 +3,8 @@
 
 #include <cstdint>
 #include <cfloat>
-#if __has_include("freertos/FreeRTOS.h")
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-#else
-using SemaphoreHandle_t = void*;
-using TickType_t = uint32_t;
-static constexpr TickType_t portMAX_DELAY = 0xffffffffu;
-static constexpr int pdTRUE = 1;
-extern "C" {
-SemaphoreHandle_t xSemaphoreCreateMutex();
-int xSemaphoreTake(SemaphoreHandle_t, TickType_t);
-int xSemaphoreGive(SemaphoreHandle_t);
-void vSemaphoreDelete(SemaphoreHandle_t);
-}
-#endif
 
 namespace xmesh {
 
@@ -177,6 +164,14 @@ public:
     uint8_t getNeighborCount() const { return numNeighbors; }
 
     /**
+     * @brief Get neighbor address by index
+     * @param index Neighbor index (0 to getNeighborCount()-1)
+     * @return Neighbor address, or 0 if index out of bounds
+     */
+    uint16_t getNeighborAddress(uint8_t index) const;
+
+#if defined(UNIT_TEST) || defined(NATIVE_BUILD)
+    /**
      * @brief Get neighbor health stats for debugging
      * @param addr Neighbor address to query
      * @param missedHellos Output: number of missed HELLOs
@@ -184,6 +179,7 @@ public:
      * @return true if neighbor found, false otherwise
      */
     bool getNeighborStats(uint16_t addr, uint8_t& missedHellos, uint32_t& silenceDuration) const;
+#endif
 
     // ============================================================
     // Configuration
@@ -195,17 +191,9 @@ public:
      */
     void setIsGateway(bool isGateway) { isGatewayNode = isGateway; }
 
-    /**
-     * @brief Check if this node is configured as gateway
-     * @return true if gateway node
-     */
-    bool getIsGateway() const { return isGatewayNode; }
-
     // Runtime threshold adjustment for mobility
     void setWarningThreshold(uint32_t ms);
     void setDetectionThreshold(uint32_t ms);
-    uint32_t getWarningThreshold() const;
-    uint32_t getDetectionThreshold() const;
 
 private:
     // Local gateway load tracking

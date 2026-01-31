@@ -1,0 +1,14 @@
+{
+    "name": "xmesh-security",
+    "version": "1.0.0",
+    "description": "Security layer for xMESH: encryption, replay protection, device authentication",
+    "keywords": ["security", "encryption", "aes-gcm", "replay-protection", "mesh"],
+    "authors": [
+        {
+            "name": "xMESH Team"
+        }
+    ],
+    "dependencies": {},
+    "frameworks": ["arduino", "espidf"],
+    "platforms": ["espressif32", "native"]
+}
