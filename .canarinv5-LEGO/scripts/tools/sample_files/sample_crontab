@@ -1,0 +1,2 @@
+0 0 0 * * * restart
+0 */30 * * * * clear_old_sensor_cache

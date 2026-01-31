@@ -1,0 +1,12 @@
+
+menu "Can5 Network"
+
+    config CAN5_NET_BUILD_TESTS
+        bool "Build net Tests"
+        help
+            Select this to build tests for net component.
+            
+            IMPORTANT: for this to have effect, CONFIG_LOG_DEFAULT_LEVEL must be  > 0.
+            
+endmenu
+

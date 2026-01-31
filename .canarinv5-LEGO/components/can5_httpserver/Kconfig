@@ -1,0 +1,12 @@
+
+menu "Can5 HTTP Server"
+
+    config CAN5_HTTPSERVER_BUILD_TESTS
+        bool "Build HTTPSERVER Tests"
+        help
+            Select this to build tests for http server component.
+            
+            IMPORTANT: for this to have effect, CONFIG_LOG_DEFAULT_LEVEL must be  > 0.
+
+endmenu
+

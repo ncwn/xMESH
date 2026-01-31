@@ -1,0 +1,308 @@
+menu "Canarin 5"
+
+    menu "Time Management"
+        config CAN5_SENSOR_GPS_TIME_SYNC
+            bool "Sync time using GPS sensor"
+            default y
+            help
+                Select this to sync time using GPS sensor.
+
+        config CAN5_HAL_SNTP_TIME_SYNC
+            bool "Sync time using SNTP"
+            default y
+            help
+                Select this to sync time using SNTP when WiFi is connected in STA mode.
+
+        config CAN5_NET_SYNC_HAZEMON_SERVER
+            bool "Sync time with hazemon server."
+            default y
+            help
+                Select this to sync time with hazemon server from the ack packets received.
+    endmenu
+
+    config CAN5_COMMIT_FS_INTERVAL_MS
+        int "Interval to commit config to disk in ms"
+        default 5000
+        help
+            Interval to commit config to disk in millisecond. For decreasing write cycles to SD card.
+
+    config CAN5_MQTT_PUBLISH_STATS_INTERVAL_MS
+        int "Interval to publish stats for mqtt configuration."
+        default 60000
+        help
+            Interval to publish mqtt stats in millisecond.
+
+    config CAN5_OTA_MAX_HTTPS_SIZE
+        int "Size of each https request for ota."
+        default 4096
+        help
+            Size of each https request for ota.
+
+    config CAN5_KEEP_CACHE_FILE_NUM
+        int "Number of latest cache files to keep."
+        default 5
+        help
+            When old data is cleared, keep this number of cache files.
+
+    config CAN5_NET_HAZEMON_NOACK_THRESHOLD
+        int "Maximum Ack timeout count after which UDP socket to Hazemon is reset"
+        default 12
+        help
+            Set the maximum Ack timeout count after which the UDP socket to the Hazemon server is closed, and opened again.
+
+    menu "WiFi"
+        config CAN5_HTTPSERVER_WIFI_SCAN_MAX
+            int "Maximum Wifi Scan Result Records"
+            default 16
+            help
+                Set the maximum Wifi Scan Records to Show.
+
+        config CAN5_HAL_CELL_RETRIES_MAX
+            int "Maximum Retries to JOIN Cellular before restarting."
+            default 10
+            help
+                Set the maximum cellular join retries. Each retry doubles the join delay period.
+    endmenu
+
+
+    config CAN5_LWAN_RESET_FRAME_COUNTER_INTERVAL_SEC
+        int "Set the time period to wait for TTN to reset the frame counters."
+        default 120
+        help
+            Set the number of seconds to wait for TTN to reset the frame counters.
+
+
+    menu "Errors"
+        config CAN5_STORAGE_CRITICAL_ERRORS_MAX
+            int "Maximum Storage Critical Errors"
+            default 5
+            help
+                Set the maximimum storage critical errors before reboot.
+    endmenu
+
+
+    config CAN5_UDP_MTU
+        int "UDP Maximum transfer unit in Bytes"
+        default 1500
+        help
+            Maximum size of one UDP packet.
+
+    menu "Debug"
+        config CAN5_SHOW_TASK_STACK_USAGE
+            bool "Show the task stack high watermark."
+            default n
+            help
+                Show the high watermark usage by tasks to optimize their memory usage.
+
+        config CAN5_SHOW_VERBOSE_LOG
+            bool "Show verbose logs."
+            default n
+            help
+                Show verbose logs
+
+        config CAN5_SHOW_FREE_HEAP_MEMORY
+            bool "Show free heap memory"
+            default n
+            help
+                Show free heap memory.
+
+    endmenu
+
+    menu "Tasks"
+        menu "Command"
+            config CAN5_CMD_QUEUE_SIZE
+                int "Command queue size"
+                default 8
+                help
+                    Set the command queue size.
+        endmenu
+
+        menu "Sensor Manager"
+            config CAN5_SENSORMNG_TASK_STACK_SIZE
+                int "Sensor manager task stack size"
+                default 2048
+                help
+                    Set the stack size of sensor manager task.
+
+            config CAN5_SENSORMNG_TASK_PRIORITY
+                int "Sensor manager task priority"
+                default 12
+                help
+                    Set the priority of sensor manager task.
+
+            config CAN5_SENSORMNG_UART_TASK_STACK_SIZE
+                int "Sensor manager UART task stack size"
+                default 2560
+                help
+                    Set the stack size of sensor manager uart task.
+
+            config CAN5_SENSORMNG_UART_TASK_PRIORITY
+                int "Sensor manager UART task priority"
+                default 12
+                help
+                    Set the priority of sensor manager uart task.
+
+            config CAN5_SENSORMNG_ADC_TASK_ENABLE
+                bool "Enable sensormng ADC task"
+                default true
+                help
+                    Enable ADC task to read ADC sensors.
+
+            config CAN5_SENSORMNG_ADC_TASK_STACK_SIZE
+                int "Sensor manager ADC task stack size"
+                default 2560
+                help
+                    Set the stack size of sensor manager task.
+
+            config CAN5_SENSORMNG_ADC_TASK_PRIORITY
+                int "Sensor manager ADC task priority"
+                default 12
+                help
+                    Set the priority of sensor manager ADC task.
+
+            config CAN5_SENSORMNG_I2C_TASK_STACK_SIZE
+                int "Sensor manager I2C task stack size"
+                default 2560
+                help
+                    Set the stack size of sensor manager I2C task.
+
+            config CAN5_SENSORMNG_I2C_TASK_PRIORITY
+                int "Sensor manager I2C task priority"
+                default 12
+                help
+                    Set the priority of sensor manager I2C task.
+
+        endmenu
+
+        menu "Network Manager"
+            config CAN5_NETWORKMNG_TASK_STACK_SIZE
+                int "Network manager task stack size"
+                default 2048
+                help
+                    Set the stack size of network manager task.
+
+            config CAN5_NETWORKMNG_TASK_PRIORITY
+                int "Network manager task priority"
+                default 12
+                help
+                    Set the priority of network manager task.
+
+            config CAN5_NETWORKMNG_PROTOCOL_TASK_STACK_SIZE
+                int "Network manager communication protocol task stack size"
+                default 2560
+                help
+                    Set the stack size of network manager communication protocol task. If multiple network protocols are running, there will be corresponding number of tasks.
+
+            config CAN5_NETWORKMNG_PROTOCOL_TASK_PRIORITY
+                int "Network manager communication protocol task priority"
+                default 12
+                help
+                    Set the priority of network manager communication protocol task. If multiple network protocols are running, there will be corresponding number of tasks.
+        endmenu
+
+        menu "Logger"
+            config CAN5_LOGGER_TASK_STACK_SIZE
+                int "Logger task stack size"
+                default 2048
+                help
+                    Set the stack size of logger task.
+
+            config CAN5_LOGGER_TASK_PRIORITY
+                int "Logger task priority"
+                default 12
+                help
+                    Set the priority of logger task.
+
+            config CAN5_LOGGER_QUEUE_SIZE
+                int "Logger queue size."
+                default 8
+                help
+                    Set the queue size of logger component.
+
+            config CAN5_LOGGER_MSG_BUFFER_SIZE
+                int "Message buffer size"
+                default 2048
+                help
+                    Set the max message buffer size of logger component.
+
+            menu "SD Card Logs"
+                config CAN5_STORAGE_LOG_SIZE_MAX
+                    int "Maximum Size of Log File in MB"
+                    default 128
+                    help
+                        Set the maximum size of log files in MB.
+
+                config CAN5_STORAGE_LOG_NUM_MAX
+                    int "Maximum Number of Log Files."
+                    default 8
+                    help
+                        Set the maximum number of log files.
+            endmenu
+
+        endmenu
+
+        menu "Monitor"
+            config CAN5_MONITOR_TASK_STACK_SIZE
+                int "Monitor task stack size"
+                default 2048
+                help
+                    Set the stack size of monitor task.
+
+            config CAN5_MONITOR_TASK_PRIORITY
+                int "Monitor task priority"
+                default 4
+                help
+                    Set the monitor task priority.
+        endmenu
+
+    endmenu
+
+    config CAN5_WS3226_MAX_MINUTES
+        int "Maximum data cycle period minutes WS3226 can handle."
+        default 32
+        help
+            Set the max number of samples WS3226 can handle per data cycle period
+
+    config CAN5_AP_WIFI_MAX_CONNECTIONS
+        int "Number of clients that can connect to AP simultaneously."
+        default 1
+        help
+            Set number of clients that can connect to AP simultaneously.
+
+    menu "Sensors"
+        config CAN5_UBLOX_M8M_READ_TIME
+        int "Maximum read time for ublox m8m gps module in seconds."
+        default 30
+        help
+            Set the maximum read time for ublox m8m gps module in seconds.
+    endmenu
+
+    menu "High Frequency IMU"
+
+        config CAN5_HIGH_FREQ_IMU_ENABLE
+            bool "Enable high frequency IMU(more RAM usage)"
+            default false
+            help
+                Enable high frequency IMU module. Uses more RAM.
+
+        config CAN5_HIGH_FREQ_IMU_BUFFER_SIZE
+            int "High Fequency IMU buffer size"
+            default 4096
+            help
+                Buffer to hold data to avoid high frequency writes to the filesystem.
+
+        config CAN5_SENSORMNG_HIGH_FREQ_IMU_TASK_STACK_SIZE
+            int "Sensor manager high freq imu stack size"
+            default 2560
+            help
+                Set the stack size of sensor manager high freq imu task.
+
+        config CAN5_SENSORMNG_HIGH_FREQ_IMU_TASK_PRIORITY
+            int "Sensor manager high freq imu task priority"
+            default 12
+            help
+                Set the priority of sensor manager high freq imu task.
+
+    endmenu
+
+endmenu

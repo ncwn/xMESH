@@ -1,0 +1,11 @@
+menu "Can5 RTC"
+
+    config CAN5_RTC_BUILD_TESTS
+        bool "Build RTC Tests"
+        help
+            Select this to build tests for storage component.
+            
+            IMPORTANT: for this to have effect, CONFIG_LOG_DEFAULT_LEVEL must be  > 0.
+            
+endmenu
+

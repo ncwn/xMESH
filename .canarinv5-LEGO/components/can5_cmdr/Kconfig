@@ -1,0 +1,12 @@
+
+menu "Can5 Commander"
+
+    config CAN5_CMD_BUILD_TESTS
+        bool "Build COMMANDER Tests"
+        help
+            Select this to build tests for commander component.
+            
+            IMPORTANT: for this to have effect, CONFIG_LOG_DEFAULT_LEVEL must be  > 0.
+
+endmenu
+
