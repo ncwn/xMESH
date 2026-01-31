@@ -156,6 +156,32 @@ pio run
 - **Display:** Internal SSD1306 128x64 (I2C, RST=21)
 - **Sensors:** PMS7003 (UART1, pins 4/5), GPS (UART2, pins 6/7)
 
+## KNOWN ISSUES (Oracle-Validated)
+
+### Routing Issues
+
+| Issue | Severity | Description | Fix |
+|-------|----------|-------------|-----|
+| ETX not functional | HIGH | Sequence numbers use local counter, not sender's packet ID | Use `PacketHeader::id` from received packets |
+| Gateway load not propagated | MEDIUM | HELLO packets don't carry load field | Add load byte to RoutePacket |
+| Trickle scope limited | MEDIUM | Only paces app broadcasts, not LoRaMesher HELLOs | Hook into Hello_Task or suppress built-in |
+| New-neighbor race condition | LOW | Trickle reset inconsistent on rapid neighbor changes | Add debounce timer |
+
+### Security Issues
+
+| Issue | Severity | Description | Fix |
+|-------|----------|-------------|-----|
+| 4-byte GCM tag | MEDIUM | Weak against active attackers (~2^32 forgery resistance) | Use full 16-byte tag if bandwidth permits |
+| Replay after reboot | HIGH | Per-peer counters not persisted | Persist to NVS on update |
+| Shared network key | MEDIUM | One compromised node compromises all | Implement pairwise keys |
+| AUTH_ONLY not enforced | LOW | Production main.cpp only checks ENCRYPTED+ | Add explicit AUTH_ONLY path |
+
+### General Limitations
+
+- Single radio frequency (no channel hopping)
+- Mesh status via serial only (no visualization)
+- Gateway discovery relies on broadcast range
+
 ## NOTES
 
 - `LM_GOD_MODE` exposes internal LoRaMesher APIs for xMESH hooks
@@ -163,3 +189,8 @@ pio run
 - Trickle reduces HELLO overhead in stable networks (60s→600s adaptive)
 - ETX uses sequence gaps - no ACK packets needed
 - Gateway mode auto-enables MQTT forwarding if broker configured
+
+## SEE ALSO
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) - Comprehensive architecture documentation
+- [FORK_MODIFICATION.md](FORK_MODIFICATION.md) - LoRaMesher fork changes
