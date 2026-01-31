@@ -80,3 +80,6 @@ htmlcov/
 
 # Sisyphus planning (local only)
 .sisyphus/*.local.md
+
+# External References
+.canarinv5-LEGO/
