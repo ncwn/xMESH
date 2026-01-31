@@ -81,5 +81,6 @@ htmlcov/
 # Sisyphus planning (local only)
 .sisyphus/*.local.md
 
-# External References
+# External References (analysis only, not part of xMESH)
+.LoRaMesher-OG/
 .canarinv5-LEGO/
