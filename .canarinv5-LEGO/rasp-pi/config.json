@@ -1,7 +1,0 @@
-{
-  "device": "/dev/ttyUSB0",
-  "baudrate": 115200,
-  "db_path": "canarin.sqlite",
-  "table": "sensor_readings",
-  "log_level": "DEBUG"
-}
