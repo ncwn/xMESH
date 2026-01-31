@@ -1,0 +1,82 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Clangd cache
+.cache/
+.clangd/
+compile_commands.json
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.eggs/
+venv/
+.venv/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Secrets (never commit)
+.env
+.env.*
+credentials.json
+secrets.json
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Temporary
+*.tmp
+*.temp
+.tmp/
+tmp/
+
+# ESP-IDF
+sdkconfig.old
+build/
+
+# Documentation build
+docs/_build/
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Sisyphus planning (local only)
+.sisyphus/*.local.md
